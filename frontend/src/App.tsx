@@ -4,11 +4,24 @@ import { useAuthStore } from './stores/authStore'
 import AppLayout from './components/layout/AppLayout'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
+import ClientsPage from './pages/ClientsPage'
+import ClientDetailPage from './pages/ClientDetailPage'
+import DealsPage from './pages/DealsPage'
+import DealDetailPage from './pages/DealDetailPage'
 
 function AuthInit({ children }: { children: React.ReactNode }) {
   const fetchMe = useAuthStore((s) => s.fetchMe)
   useEffect(() => { fetchMe() }, [fetchMe])
   return <>{children}</>
+}
+
+function PlaceholderPage({ title }: { title: string }) {
+  return (
+    <div>
+      <h1 className="text-2xl font-semibold text-[var(--text)] mb-4">{title}</h1>
+      <p className="text-sm text-[var(--text-secondary)]">Coming soon — Phase 3/4.</p>
+    </div>
+  )
 }
 
 export default function App() {
@@ -19,6 +32,15 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route element={<AppLayout />}>
             <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/clients" element={<ClientsPage />} />
+            <Route path="/clients/:id" element={<ClientDetailPage />} />
+            <Route path="/deals" element={<DealsPage />} />
+            <Route path="/deals/:id" element={<DealDetailPage />} />
+            <Route path="/tasks" element={<PlaceholderPage title="Tasks" />} />
+            <Route path="/chat" element={<PlaceholderPage title="Chat" />} />
+            <Route path="/reports" element={<PlaceholderPage title="Reports" />} />
+            <Route path="/backlog" element={<PlaceholderPage title="Backlog" />} />
+            <Route path="/settings" element={<PlaceholderPage title="Settings" />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Route>
         </Routes>
