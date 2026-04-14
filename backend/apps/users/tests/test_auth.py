@@ -99,3 +99,91 @@ def test_role_str_and_defaults():
     assert viewer.can_manage_users is False
     assert viewer.can_manage_deals is True   # default is True per model
     assert viewer.can_manage_settings is False
+
+
+# ── API Tests ──────────────────────────────────────────────────────────────────
+
+from rest_framework.test import APIClient
+from apps.users.models import Role
+
+@pytest.fixture
+def api_client():
+    return APIClient()
+
+@pytest.fixture
+def admin_role(db):
+    return Role.objects.create(
+        name='Admin',
+        preset=Role.Preset.ADMIN,
+        can_manage_users=True,
+        can_manage_deals=True,
+        can_manage_clients=True,
+        can_view_reports=True,
+        can_manage_settings=True,
+    )
+
+@pytest.fixture
+def admin_user(db, admin_role):
+    return User.objects.create_user(
+        email='admin@idev.team',
+        password='adminpass',
+        first_name='Admin',
+        last_name='User',
+        role=admin_role,
+    )
+
+@pytest.mark.django_db
+def test_login_success(api_client, admin_user):
+    response = api_client.post('/api/token/', {
+        'email': 'admin@idev.team',
+        'password': 'adminpass',
+    }, format='json')
+    assert response.status_code == 200
+    assert 'access' in response.data
+    assert 'refresh' in response.data
+
+@pytest.mark.django_db
+def test_login_wrong_password(api_client, admin_user):
+    response = api_client.post('/api/token/', {
+        'email': 'admin@idev.team',
+        'password': 'wrong',
+    }, format='json')
+    assert response.status_code == 401
+
+@pytest.mark.django_db
+def test_me_endpoint_returns_user_with_permissions(api_client, admin_user):
+    api_client.force_authenticate(user=admin_user)
+    response = api_client.get('/api/users/me/')
+    assert response.status_code == 200
+    assert response.data['email'] == 'admin@idev.team'
+    assert 'role' in response.data
+    assert 'permissions' in response.data
+    assert response.data['permissions']['can_manage_users'] is True
+
+@pytest.mark.django_db
+def test_me_unauthenticated(api_client):
+    response = api_client.get('/api/users/me/')
+    assert response.status_code == 401
+
+@pytest.mark.django_db
+def test_user_list_requires_admin(api_client, admin_user):
+    # Non-admin cannot access user list
+    viewer_role = Role.objects.create(name='Viewer', preset=Role.Preset.VIEWER, can_manage_users=False)
+    viewer = User.objects.create_user(email='viewer@idev.team', password='pass', role=viewer_role)
+    api_client.force_authenticate(user=viewer)
+    response = api_client.get('/api/users/')
+    assert response.status_code == 403
+
+@pytest.mark.django_db
+def test_user_list_admin_can_access(api_client, admin_user):
+    api_client.force_authenticate(user=admin_user)
+    response = api_client.get('/api/users/')
+    assert response.status_code == 200
+    assert 'results' in response.data  # paginated
+
+@pytest.mark.django_db
+def test_roles_list(api_client, admin_user, admin_role):
+    api_client.force_authenticate(user=admin_user)
+    response = api_client.get('/api/users/roles/')
+    assert response.status_code == 200
+    assert len(response.data) >= 1
