@@ -25,6 +25,8 @@ INSTALLED_APPS = [
     'django_filters',
     # Local
     'apps.users',
+    'apps.clients',
+    'apps.deals',
 ]
 
 MIDDLEWARE = [
