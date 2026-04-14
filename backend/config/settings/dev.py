@@ -1,7 +1,6 @@
 from .base import *
 
 DEBUG = True
-SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-prod')
 ALLOWED_HOSTS = ['*']
 
 CORS_ALLOW_ALL_ORIGINS = True

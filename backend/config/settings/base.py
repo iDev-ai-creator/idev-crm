@@ -1,8 +1,9 @@
 import os
+from datetime import timedelta
 from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=False)
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -90,7 +91,6 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 25,
 }
 
-from datetime import timedelta
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
