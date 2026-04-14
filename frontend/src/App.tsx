@@ -8,6 +8,7 @@ import ClientsPage from './pages/ClientsPage'
 import ClientDetailPage from './pages/ClientDetailPage'
 import DealsPage from './pages/DealsPage'
 import DealDetailPage from './pages/DealDetailPage'
+import TasksPage from './pages/TasksPage'
 
 function AuthInit({ children }: { children: React.ReactNode }) {
   const fetchMe = useAuthStore((s) => s.fetchMe)
@@ -36,7 +37,7 @@ export default function App() {
             <Route path="/clients/:id" element={<ClientDetailPage />} />
             <Route path="/deals" element={<DealsPage />} />
             <Route path="/deals/:id" element={<DealDetailPage />} />
-            <Route path="/tasks" element={<PlaceholderPage title="Tasks" />} />
+            <Route path="/tasks" element={<TasksPage />} />
             <Route path="/chat" element={<PlaceholderPage title="Chat" />} />
             <Route path="/reports" element={<PlaceholderPage title="Reports" />} />
             <Route path="/backlog" element={<PlaceholderPage title="Backlog" />} />
