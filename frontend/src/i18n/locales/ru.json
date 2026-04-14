@@ -1,0 +1,31 @@
+{
+  "nav": {
+    "dashboard": "Дашборд",
+    "clients": "Клиенты",
+    "deals": "Сделки",
+    "tasks": "Задачи",
+    "chat": "Чат",
+    "reports": "Отчёты",
+    "backlog": "Бэклог",
+    "settings": "Настройки"
+  },
+  "auth": {
+    "login": "Войти",
+    "logout": "Выйти",
+    "email": "Email",
+    "password": "Пароль",
+    "loginTitle": "Вход в систему",
+    "loginError": "Неверный email или пароль"
+  },
+  "common": {
+    "loading": "Загрузка...",
+    "save": "Сохранить",
+    "cancel": "Отмена",
+    "delete": "Удалить",
+    "edit": "Редактировать",
+    "add": "Добавить",
+    "search": "Поиск",
+    "noData": "Нет данных",
+    "error": "Ошибка"
+  }
+}
