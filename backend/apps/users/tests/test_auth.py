@@ -65,3 +65,37 @@ def test_employee_creation():
     employee = Employee.objects.create(user=user, position='Developer', department='Engineering')
     assert str(employee) == f'{user} — Developer'
     assert employee.manager is None
+
+@pytest.mark.django_db
+def test_create_user_empty_email_raises():
+    with pytest.raises(ValueError, match='Email is required'):
+        User.objects.create_user(email='', password='pass')
+
+@pytest.mark.django_db
+def test_sales_plan_creation():
+    from apps.users.models import Role, Employee, SalesPlan
+    import datetime
+    from decimal import Decimal
+    role = Role.objects.create(name='SM', preset=Role.Preset.SALES_MANAGER)
+    user = User.objects.create_user(email='sm@idev.team', password='pass', role=role)
+    employee = Employee.objects.create(user=user, position='Sales')
+    plan = SalesPlan.objects.create(
+        employee=employee,
+        period_start=datetime.date(2026, 1, 1),
+        period_end=datetime.date(2026, 3, 31),
+        target_amount_usd=Decimal('10000.00'),
+        scope=SalesPlan.Scope.PERSONAL,
+    )
+    assert plan.target_amount_usd == Decimal('10000.00')
+    assert plan.scope == SalesPlan.Scope.PERSONAL
+    assert 'sm@idev.team' in str(plan)
+
+@pytest.mark.django_db
+def test_role_str_and_defaults():
+    from apps.users.models import Role
+    viewer = Role.objects.create(name='Viewer', preset=Role.Preset.VIEWER)
+    assert str(viewer) == 'Viewer'
+    # All permissions default to False for viewer preset
+    assert viewer.can_manage_users is False
+    assert viewer.can_manage_deals is True   # default is True per model
+    assert viewer.can_manage_settings is False

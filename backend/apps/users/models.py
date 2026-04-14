@@ -23,6 +23,7 @@ class Role(models.Model):
     class Meta:
         verbose_name = 'Role'
         verbose_name_plural = 'Roles'
+        ordering = ['name']
 
 
 class UserManager(BaseUserManager):
@@ -88,6 +89,7 @@ class Employee(models.Model):
     class Meta:
         verbose_name = 'Employee'
         verbose_name_plural = 'Employees'
+        ordering = ['user__last_name', 'user__first_name']
 
 
 class SalesPlan(models.Model):
@@ -108,3 +110,4 @@ class SalesPlan(models.Model):
     class Meta:
         verbose_name = 'Sales Plan'
         verbose_name_plural = 'Sales Plans'
+        ordering = ['-period_start']
