@@ -1,5 +1,7 @@
 from .dev import *
 
+SECRET_KEY = 'test-secret-key-that-is-at-least-32-bytes-long-for-jwt'
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',

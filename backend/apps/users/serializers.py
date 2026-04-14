@@ -25,8 +25,15 @@ class UserSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'full_name', 'permissions']
 
     def get_permissions(self, obj):
+        defaults = {
+            'can_manage_users': False,
+            'can_manage_deals': False,
+            'can_manage_clients': False,
+            'can_view_reports': False,
+            'can_manage_settings': False,
+        }
         if not obj.role:
-            return {}
+            return defaults
         return {
             'can_manage_users': obj.role.can_manage_users,
             'can_manage_deals': obj.role.can_manage_deals,

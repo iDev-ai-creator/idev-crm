@@ -22,7 +22,7 @@ class MeView(APIView):
 
 
 class UserListView(generics.ListCreateAPIView):
-    queryset = User.objects.select_related('role').filter(is_active=True).order_by('first_name')
+    queryset = User.objects.select_related('role').filter(is_active=True).order_by('first_name', 'last_name')
     permission_classes = [IsAuthenticated, IsAdmin]
     filterset_fields = ['role', 'is_active']
     search_fields = ['email', 'first_name', 'last_name']
@@ -32,9 +32,15 @@ class UserListView(generics.ListCreateAPIView):
             return CreateUserSerializer
         return UserSerializer
 
+    def create(self, request, *args, **kwargs):
+        serializer = CreateUserSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        return Response(UserSerializer(user).data, status=201)
+
 
 class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = User.objects.select_related('role')
+    queryset = User.objects.select_related('role').filter(is_active=True)
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated, IsAdmin]
 

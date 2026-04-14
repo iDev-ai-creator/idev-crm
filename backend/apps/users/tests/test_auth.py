@@ -95,7 +95,7 @@ def test_role_str_and_defaults():
     from apps.users.models import Role
     viewer = Role.objects.create(name='Viewer', preset=Role.Preset.VIEWER)
     assert str(viewer) == 'Viewer'
-    # All permissions default to False for viewer preset
+    # can_manage_users defaults to False; can_manage_deals defaults to True
     assert viewer.can_manage_users is False
     assert viewer.can_manage_deals is True   # default is True per model
     assert viewer.can_manage_settings is False
@@ -187,3 +187,33 @@ def test_roles_list(api_client, admin_user, admin_role):
     response = api_client.get('/api/users/roles/')
     assert response.status_code == 200
     assert len(response.data) >= 1
+
+@pytest.mark.django_db
+def test_me_patch_updates_language(api_client, admin_user):
+    api_client.force_authenticate(user=admin_user)
+    response = api_client.patch('/api/users/me/', {'language': 'en'}, format='json')
+    assert response.status_code == 200
+    assert response.data['language'] == 'en'
+
+@pytest.mark.django_db
+def test_user_detail_get(api_client, admin_user):
+    api_client.force_authenticate(user=admin_user)
+    response = api_client.get(f'/api/users/{admin_user.pk}/')
+    assert response.status_code == 200
+    assert response.data['email'] == 'admin@idev.team'
+
+@pytest.mark.django_db
+def test_user_detail_soft_delete(api_client, admin_user):
+    # Create a second user to delete
+    from apps.users.models import Role
+    role = Role.objects.create(name='ToDelete', preset=Role.Preset.VIEWER)
+    target = User.objects.create_user(email='delete@idev.team', password='pass', role=role)
+    api_client.force_authenticate(user=admin_user)
+    response = api_client.delete(f'/api/users/{target.pk}/')
+    assert response.status_code == 204
+    target.refresh_from_db()
+    assert target.is_active is False
+    # Should not appear in list
+    list_resp = api_client.get('/api/users/')
+    emails = [u['email'] for u in list_resp.data['results']]
+    assert 'delete@idev.team' not in emails
