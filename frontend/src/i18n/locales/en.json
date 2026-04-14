@@ -1,0 +1,31 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "clients": "Clients",
+    "deals": "Deals",
+    "tasks": "Tasks",
+    "chat": "Chat",
+    "reports": "Reports",
+    "backlog": "Backlog",
+    "settings": "Settings"
+  },
+  "auth": {
+    "login": "Sign In",
+    "logout": "Sign Out",
+    "email": "Email",
+    "password": "Password",
+    "loginTitle": "Sign In",
+    "loginError": "Invalid email or password"
+  },
+  "common": {
+    "loading": "Loading...",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "add": "Add",
+    "search": "Search",
+    "noData": "No data",
+    "error": "Error"
+  }
+}
