@@ -13,6 +13,7 @@ urlpatterns = [
     path('api/tasks/', include('apps.tasks.urls')),
     path('api/dashboard/', include('apps.dashboard.urls')),
     path('api/chat/', include('apps.chat.urls')),
+    path('api/backlog/', include('apps.backlog.urls')),
 ]
 
 if settings.DEBUG:
