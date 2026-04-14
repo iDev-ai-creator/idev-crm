@@ -217,3 +217,14 @@ def test_user_detail_soft_delete(api_client, admin_user):
     list_resp = api_client.get('/api/users/')
     emails = [u['email'] for u in list_resp.data['results']]
     assert 'delete@idev.team' not in emails
+
+@pytest.mark.django_db
+def test_me_patch_cannot_change_role(api_client, admin_user):
+    """Users cannot escalate their own role via PATCH /me/."""
+    viewer_role = Role.objects.create(name='ViewerRole', preset=Role.Preset.VIEWER)
+    api_client.force_authenticate(user=admin_user)
+    response = api_client.patch('/api/users/me/', {'role_id': viewer_role.pk}, format='json')
+    # role_id should be ignored — admin_user still has admin role
+    assert response.status_code == 200
+    admin_user.refresh_from_db()
+    assert admin_user.role.name == 'Admin'  # unchanged

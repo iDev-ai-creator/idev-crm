@@ -55,3 +55,10 @@ class CreateUserSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         return User.objects.create_user(**validated_data)
+
+
+class UpdateMeSerializer(serializers.ModelSerializer):
+    """Serializer for users updating their own profile — role changes not allowed."""
+    class Meta:
+        model = User
+        fields = ['first_name', 'last_name', 'avatar', 'language']
