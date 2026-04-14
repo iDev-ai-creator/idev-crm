@@ -1,0 +1,40 @@
+name: Deploy to Silver Server
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install backend deps
+        run: cd backend && pip install -r requirements-dev.txt
+      - name: Run tests
+        run: cd backend && pytest apps/ -v --tb=short
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings.test
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 89.167.108.210
+          username: root
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/idev-crm
+            git pull origin main
+            docker compose build
+            docker compose up -d
+            docker compose exec -T backend python manage.py migrate --no-input
+            docker compose exec -T backend python manage.py loaddata fixtures/initial_data.json
+            echo "✅ iDev CRM deployed at $(date)"
