@@ -91,13 +91,21 @@ CACHES = {
 
 AUTH_USER_MODEL = 'users.User'
 
+# Toggle: set BYPASS_AUTH=true in .env to skip login for demos.
+# All auth code is preserved — just flip this flag back to re-enable.
+BYPASS_AUTH = os.environ.get('BYPASS_AUTH', 'false').lower() == 'true'
+
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
-    ],
-    'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticated',
-    ],
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        ['apps.users.authentication.BypassAuthentication']
+        if BYPASS_AUTH else
+        ['rest_framework_simplejwt.authentication.JWTAuthentication']
+    ),
+    'DEFAULT_PERMISSION_CLASSES': (
+        ['rest_framework.permissions.AllowAny']
+        if BYPASS_AUTH else
+        ['rest_framework.permissions.IsAuthenticated']
+    ),
     'DEFAULT_FILTER_BACKENDS': [
         'django_filters.rest_framework.DjangoFilterBackend',
         'rest_framework.filters.SearchFilter',

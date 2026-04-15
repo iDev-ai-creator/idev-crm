@@ -3,10 +3,14 @@ import { useAuthStore } from '../../stores/authStore'
 import Sidebar from './Sidebar'
 import Header from './Header'
 
+// Toggle: set to true to skip login for demos.
+// All auth code is preserved — flip back to false to re-enable.
+const BYPASS_AUTH = true
+
 export default function AppLayout() {
   const { isAuthenticated, isLoading } = useAuthStore()
 
-  if (isLoading) {
+  if (!BYPASS_AUTH && isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[var(--bg-main)]">
         <div className="text-[var(--text-secondary)] text-sm">Загрузка...</div>
@@ -14,7 +18,7 @@ export default function AppLayout() {
     )
   }
 
-  if (!isAuthenticated) {
+  if (!BYPASS_AUTH && !isAuthenticated) {
     return <Navigate to="/login" replace />
   }
 
