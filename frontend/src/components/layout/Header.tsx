@@ -2,7 +2,12 @@ import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '../../stores/authStore'
 import i18n from '../../i18n/index'
 
-export default function Header() {
+interface Props {
+  onMenuClick: () => void
+  sidebarOpen: boolean
+}
+
+export default function Header({ onMenuClick, sidebarOpen }: Props) {
   const { t } = useTranslation()
   const { user, logout } = useAuthStore()
 
@@ -13,21 +18,43 @@ export default function Header() {
   }
 
   return (
-    <header className="h-14 border-b border-[var(--border)] bg-[var(--bg-card)] flex items-center justify-end px-6 gap-4 shrink-0">
+    <header className="h-14 border-b border-[var(--border)] bg-[var(--bg-card)] flex items-center px-4 gap-3 shrink-0">
+      {/* Hamburger — mobile only */}
       <button
-        onClick={toggleLang}
-        className="text-sm text-[var(--text-secondary)] hover:text-[var(--text)] font-medium px-2 py-1 rounded hover:bg-[var(--bg-hover)] transition-colors"
+        onClick={onMenuClick}
+        className="md:hidden w-9 h-9 flex flex-col items-center justify-center gap-1.5 rounded-lg hover:bg-[var(--bg-hover)] transition-colors shrink-0"
+        aria-label="Toggle menu"
       >
-        {i18n.language === 'ru' ? 'EN' : 'RU'}
+        <span className={`block w-5 h-0.5 bg-[var(--text)] transition-all duration-300 ${sidebarOpen ? 'rotate-45 translate-y-2' : ''}`} />
+        <span className={`block w-5 h-0.5 bg-[var(--text)] transition-all duration-300 ${sidebarOpen ? 'opacity-0' : ''}`} />
+        <span className={`block w-5 h-0.5 bg-[var(--text)] transition-all duration-300 ${sidebarOpen ? '-rotate-45 -translate-y-2' : ''}`} />
       </button>
-      <div className="flex items-center gap-3">
-        <span className="text-sm text-[var(--text-secondary)]">{user?.full_name}</span>
+
+      {/* Spacer */}
+      <div className="flex-1" />
+
+      {/* Right side controls */}
+      <div className="flex items-center gap-2 md:gap-4">
         <button
-          onClick={logout}
-          className="text-sm text-[var(--text-secondary)] hover:text-[var(--danger)] transition-colors"
+          onClick={toggleLang}
+          className="text-xs md:text-sm font-semibold text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors px-2 py-1 rounded border border-[var(--border)] hover:border-[var(--accent)]"
         >
-          {t('auth.logout')}
+          {i18n.language === 'ru' ? 'EN' : 'RU'}
         </button>
+
+        <div className="flex items-center gap-2 md:gap-3">
+          {user && (
+            <span className="hidden sm:block text-sm text-[var(--text-secondary)] max-w-[120px] truncate">
+              {user.full_name || user.email}
+            </span>
+          )}
+          <button
+            onClick={logout}
+            className="text-xs md:text-sm text-[var(--text-secondary)] hover:text-[var(--danger)] transition-colors whitespace-nowrap"
+          >
+            {t('auth.logout')}
+          </button>
+        </div>
       </div>
     </header>
   )

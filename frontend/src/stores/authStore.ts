@@ -1,6 +1,9 @@
 import { create } from 'zustand'
 import { authApi, type UserProfile, type LoginCredentials } from '../api/auth'
 
+// When true, skip token check — backend auto-auths as admin
+export const BYPASS_AUTH = true
+
 interface AuthState {
   user: UserProfile | null
   isLoading: boolean
@@ -29,7 +32,8 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   fetchMe: async () => {
     const token = localStorage.getItem('access_token')
-    if (!token) {
+    // In bypass mode, always call API (backend auto-auths as admin)
+    if (!BYPASS_AUTH && !token) {
       set({ isLoading: false, isAuthenticated: false })
       return
     }
@@ -37,7 +41,12 @@ export const useAuthStore = create<AuthState>((set) => ({
       const user = await authApi.me()
       set({ user, isAuthenticated: true, isLoading: false })
     } catch {
-      set({ isLoading: false, isAuthenticated: false })
+      if (BYPASS_AUTH) {
+        // In bypass mode, show layout even if fetchMe fails
+        set({ isLoading: false, isAuthenticated: true })
+      } else {
+        set({ isLoading: false, isAuthenticated: false })
+      }
     }
   },
 }))

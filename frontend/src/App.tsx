@@ -12,6 +12,7 @@ import TasksPage from './pages/TasksPage'
 import ChatPage from './pages/ChatPage'
 import BacklogPage from './pages/BacklogPage'
 import ReportsPage from './pages/ReportsPage'
+import SettingsPage from './pages/SettingsPage'
 
 function AuthInit({ children }: { children: React.ReactNode }) {
   const fetchMe = useAuthStore((s) => s.fetchMe)
@@ -44,7 +45,7 @@ export default function App() {
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/backlog" element={<BacklogPage />} />
-            <Route path="/settings" element={<PlaceholderPage title="Settings" />} />
+            <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Route>
         </Routes>
