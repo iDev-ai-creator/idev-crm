@@ -40,6 +40,7 @@ export default function AppLayout() {
         className={`
           fixed md:static inset-y-0 left-0 z-50 md:z-auto w-64
           transform transition-transform duration-300 ease-in-out
+          bg-[var(--bg-card)] overflow-hidden
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
         `}
       >

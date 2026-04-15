@@ -62,5 +62,11 @@ export const chatApi = {
       const { data } = await api.get(`/chat/${channelId}/messages/`)
       return Array.isArray(data) ? data : data.results ?? []
     },
+    pin: async (messageId: number): Promise<void> => {
+      await api.patch(`/chat/messages/${messageId}/pin/`)
+    },
+    forward: async (messageId: number, targetChannelId: number): Promise<void> => {
+      await api.post(`/chat/messages/${messageId}/forward/`, { channel_id: targetChannelId })
+    },
   },
 }

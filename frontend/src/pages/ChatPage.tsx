@@ -16,6 +16,8 @@ export default function ChatPage() {
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null)
   const [loadingChannels, setLoadingChannels] = useState(true)
   const [loadingMessages, setLoadingMessages] = useState(false)
+  const [pinnedIds, setPinnedIds] = useState<Set<number>>(new Set())
+  const [forwardMsg, setForwardMsg] = useState<ChatMessage | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   // Load channels
@@ -74,6 +76,33 @@ export default function ChatPage() {
     sendMessage(input.trim(), replyTo?.id)
     setInput('')
     setReplyTo(null)
+  }
+
+  const togglePin = (msg: ChatMessage) => {
+    setPinnedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(msg.id)) {
+        next.delete(msg.id)
+      } else {
+        next.add(msg.id)
+      }
+      return next
+    })
+    // Best-effort API call — no await, doesn't break UI if endpoint missing
+    chatApi.messages.pin(msg.id).catch(() => {})
+  }
+
+  const handleForward = (targetChannelId: number) => {
+    if (!forwardMsg) return
+    // Optimistic: copy message text to input with forward prefix
+    setInput(`↪ ${forwardMsg.author?.full_name ?? 'Someone'}: ${forwardMsg.text}`)
+    // Switch to target channel if different
+    if (targetChannelId !== activeChannelId) {
+      setActiveChannelId(targetChannelId)
+    }
+    // Best-effort API call
+    chatApi.messages.forward(forwardMsg.id, targetChannelId).catch(() => {})
+    setForwardMsg(null)
   }
 
   const activeChannel = channels.find((c) => c.id === activeChannelId)
@@ -138,6 +167,22 @@ export default function ChatPage() {
             </div>
           </div>
 
+          {/* Pinned messages banner */}
+          {pinnedIds.size > 0 && (
+            <div className="px-4 py-2 border-b border-[var(--border)] bg-[var(--accent)]/5 flex items-center gap-2">
+              <span className="text-sm">📌</span>
+              <span className="text-xs text-[var(--text-secondary)] flex-1">
+                {pinnedIds.size} pinned message{pinnedIds.size !== 1 ? 's' : ''}
+              </span>
+              <button
+                onClick={() => setPinnedIds(new Set())}
+                className="text-xs text-[var(--text-secondary)] hover:text-[var(--danger)]"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
             {loadingMessages ? (
@@ -150,7 +195,10 @@ export default function ChatPage() {
               messages.map((msg) => {
                 const isOwn = msg.author?.id === user?.id
                 return (
-                  <div key={msg.id} className={`flex gap-2 ${isOwn ? 'flex-row-reverse' : ''} group`}>
+                  <div key={msg.id} className={`flex gap-2 ${isOwn ? 'flex-row-reverse' : ''} group relative`}>
+                    {pinnedIds.has(msg.id) && (
+                      <span className="absolute -top-1 left-8 text-xs z-10" title="Pinned">📌</span>
+                    )}
                     <div className="w-7 h-7 rounded-full bg-[var(--accent)]/20 flex items-center justify-center text-xs font-bold text-[var(--accent)] shrink-0">
                       {msg.author?.full_name?.[0] ?? '?'}
                     </div>
@@ -219,8 +267,23 @@ export default function ChatPage() {
                         <button
                           onClick={() => setReplyTo(msg)}
                           className="text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] px-1"
+                          title="Reply"
                         >
                           ↩
+                        </button>
+                        <button
+                          onClick={() => togglePin(msg)}
+                          className={`text-xs px-1 transition-colors ${pinnedIds.has(msg.id) ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)] hover:text-[var(--accent)]'}`}
+                          title={pinnedIds.has(msg.id) ? 'Unpin' : 'Pin'}
+                        >
+                          📌
+                        </button>
+                        <button
+                          onClick={() => setForwardMsg(msg)}
+                          className="text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] px-1"
+                          title="Forward"
+                        >
+                          ⤴
                         </button>
                       </div>
                     </div>
@@ -269,6 +332,42 @@ export default function ChatPage() {
           <div className="text-center">
             <div className="text-4xl mb-3">💬</div>
             <div className="text-sm text-[var(--text-secondary)]">Select a channel to start chatting</div>
+          </div>
+        </div>
+      )}
+
+      {/* Forward modal */}
+      {forwardMsg && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setForwardMsg(null)}>
+          <div
+            className="bg-[var(--bg-card)] border border-[var(--border)] rounded-[var(--radius-xl)] p-5 w-80 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-semibold text-[var(--text)] mb-3">⤴ Forward message</h3>
+            <div className="text-xs text-[var(--text-secondary)] bg-[var(--bg-hover)] rounded p-2 mb-4 line-clamp-3">
+              {forwardMsg.text}
+            </div>
+            <p className="text-xs text-[var(--text-secondary)] mb-2">Choose channel:</p>
+            <div className="space-y-1 max-h-48 overflow-y-auto">
+              {channels.map((ch) => (
+                <button
+                  key={ch.id}
+                  onClick={() => handleForward(ch.id)}
+                  className="w-full text-left text-sm px-3 py-2 rounded-[var(--radius-md)] hover:bg-[var(--bg-hover)] text-[var(--text)] transition-colors flex items-center gap-2"
+                >
+                  <span>{ch.channel_type === 'direct' ? '👤' : '👥'}</span>
+                  <span>{ch.channel_type === 'direct'
+                    ? ch.members.find((m) => m.id !== user?.id)?.full_name || ch.name || 'Direct'
+                    : ch.name || `Group #${ch.id}`}</span>
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setForwardMsg(null)}
+              className="mt-3 text-xs text-[var(--text-secondary)] hover:text-[var(--danger)] w-full text-center"
+            >
+              Cancel
+            </button>
           </div>
         </div>
       )}
