@@ -464,6 +464,88 @@ test_cases:
         - "Open /dashboard"
       expected: "Sidebar collapsed or visible, main content has > 0 height"
 
+    # ── Backlog grid layout (release 17.04) ───────────────────────────────
+    - id: TC-UI-43
+      name: Backlog columns fill container width via responsive grid
+      tab: /backlog
+      priority: P1
+      actions:
+        - "Set viewport 1440x900"
+        - "Open /backlog"
+        - "Collect width of each kanban column header (h3 with column name)"
+        - "Sum column widths and compare against board container width"
+      expected: "All 4 columns visible, sum of widths >= 70% of container width (no large empty right-hand gap)"
+
+    # ── Calendar drag-to-create (release 17.04) ───────────────────────────
+    - id: TC-UI-44
+      name: Calendar drag-to-create shows ghost with time label and opens modal
+      tab: /calendar
+      priority: P0
+      actions:
+        - "Open /calendar in week view"
+        - "Locate an empty region of today's column (below existing events)"
+        - "mouseDown at a point inside the column, mouseMove 96px downward, wait for the ghost to render"
+        - "Verify element with data-testid='selection-ghost' exists and has text matching /\\d{2}:\\d{2}\\s*[–-]\\s*\\d{2}:\\d{2}/"
+        - "mouseUp at that point"
+      expected: "Ghost visible during drag; on mouseUp a create modal opens with time input range roughly matching the ghost label"
+
+    # ── Calendar event edit (release 17.04) ───────────────────────────────
+    - id: TC-UI-45
+      name: Click event → Edit button opens pre-filled modal that saves changes
+      tab: /calendar
+      priority: P0
+      preconditions: "At least one non-all-day calendar event exists"
+      actions:
+        - "Open /calendar in week view"
+        - "Click the first element with data-testid^='event-'"
+        - "In the detail popup, click the 'Редактировать' button"
+        - "Verify an input[type='time'] exists and is pre-filled with non-empty HH:MM"
+        - "Verify input[type='date'] is pre-filled"
+        - "Append ' (updated)' to the title input and click 'Сохранить'"
+        - "Wait 800ms and re-fetch /api/calendar/events/?date_from=<week_start>&date_to=<week_end>"
+      expected: "Modal opens with populated fields; PATCH /api/calendar/events/<id>/ fires; updated title is persisted"
+
+    # ── Calendar timezone round-trip (release 17.04) ──────────────────────
+    - id: TC-UI-46
+      name: Timezone — creating an event at 14:00 saves and renders at 14:00 (no +3h drift)
+      tab: /calendar
+      priority: P0
+      actions:
+        - "Open /calendar in week view"
+        - "Click + Новое событие in the toolbar"
+        - "In modal: set title='TZ round-trip', date=today, start=14:00, end=15:00"
+        - "Submit"
+        - "Wait for list refresh (GET /api/calendar/events/…) and for the new card to appear"
+        - "Locate that event in the week grid and read its visible time label"
+      expected: "Event card shows '14:00' or '14:00 – 15:00' — NOT 17:00 (which would indicate TZ+3 leak)"
+
+    # ── Calendar horizontal drag across days (release 17.04) ──────────────
+    - id: TC-UI-47
+      name: Calendar event drag across days persists day shift
+      tab: /calendar
+      priority: P1
+      preconditions: "At least one event exists on any weekday"
+      actions:
+        - "Open /calendar in week view"
+        - "Capture data-event-id and parent data-calendar-day of the first event"
+        - "mouseDown on the event card body, mouseMove by +300px in X (toward a neighbouring day), mouseUp"
+        - "Wait 800ms"
+        - "Re-query the card with the same data-event-id"
+      expected: "Card's parent [data-calendar-day] differs from origin (day shifted); PATCH /api/calendar/events/<id>/ sent a start_datetime on a different calendar date"
+
+    # ── Calendar Escape cancels drag-to-create (release 17.04) ────────────
+    - id: TC-UI-48
+      name: Escape during drag-to-create cancels the selection (no modal, no event)
+      tab: /calendar
+      priority: P2
+      actions:
+        - "Open /calendar in week view"
+        - "mouseDown on empty slot, mouseMove 60px down"
+        - "Verify [data-testid='selection-ghost'] appears"
+        - "Press Escape key"
+        - "mouseUp"
+      expected: "Ghost disappears, no create modal opens, no POST /api/calendar/events/ fires"
+
   api:
     - id: TC-API-01
       name: POST /api/clients/check-tax-id/ validates ИНН

@@ -649,7 +649,7 @@ export default function BacklogPage() {
           </div>
           <DragOverlay dropAnimation={null}>
             {draggingItem ? (
-              <div className="bg-[var(--bg-main)] border-2 border-[var(--accent)] rounded-[var(--radius-md)] p-3 shadow-2xl rotate-2 cursor-grabbing opacity-95 w-60">
+              <div className="bg-[var(--bg-main)] border-2 border-[var(--accent)] rounded-[var(--radius-md)] p-3 shadow-2xl rotate-2 cursor-grabbing opacity-95 w-[min(90vw,18rem)]">
                 <p className="text-sm font-semibold text-[var(--text)] line-clamp-2">{draggingItem.title}</p>
                 <div className="mt-1.5 flex flex-wrap gap-1.5 items-center">
                   <PriorityBadge priority={draggingItem.priority} />

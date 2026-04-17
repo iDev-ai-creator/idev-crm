@@ -1079,6 +1079,367 @@ class IdevCrmScenarios(BaseScenario):
             self._record("TC-VAL-03", "FAIL", f"Exception: {e}", None, start)
 
     # ══════════════════════════════════════════════════════════════════════
+    # Release 17.04 — backlog grid + calendar (drag fixes, drag-to-create,
+    # event edit, TZ round-trip, horizontal drag, Escape cancel)
+    # ══════════════════════════════════════════════════════════════════════
+
+    async def tc_ui_43_backlog_grid_width(self):
+        """TC-UI-43: Backlog columns fill container width via responsive grid."""
+        start = await self._step("TC-UI-43")
+        try:
+            await self._set_viewport("desktop")
+            await self._go("/backlog", wait=1.5)
+
+            columns = self.page.locator(
+                "h3:has-text('ИДЕИ'), h3:has-text('В РАБОТЕ'),"
+                " h3:has-text('ТЕСТИРОВАНИЕ'), h3:has-text('ГОТОВО')"
+            )
+            count = await columns.count()
+
+            total_cols_width = 0.0
+            for i in range(count):
+                w = await columns.nth(i).evaluate(
+                    "el => { const c = el.closest('div.flex'); "
+                    "if (!c) return 0; return c.getBoundingClientRect().width }"
+                )
+                if w:
+                    total_cols_width += float(w)
+
+            container = self.page.locator("[class*='grid-cols-4']").first
+            container_w = 0.0
+            if await container.count() > 0:
+                box = await container.bounding_box()
+                if box:
+                    container_w = box["width"]
+
+            ratio = (total_cols_width / container_w) if container_w > 0 else 0.0
+
+            screenshot = await self._screenshot("tc_ui_43_backlog_grid")
+            issues: list[str] = []
+            if count < 4:
+                issues.append(f"only {count}/4 columns found")
+            if ratio < 0.7 and container_w > 0:
+                issues.append(f"columns fill {ratio*100:.0f}% of width (expected ≥70%)")
+
+            status = "PASS" if not issues else "WARN"
+            self._record(
+                "TC-UI-43", status,
+                f"cols={count} total={total_cols_width:.0f}px container={container_w:.0f}px ratio={ratio:.2f}"
+                + (f" | {'; '.join(issues)}" if issues else ""),
+                screenshot, start,
+            )
+        except Exception as e:
+            screenshot = await self._screenshot("tc_ui_43_err")
+            self._record("TC-UI-43", "FAIL", f"Exception: {e}", screenshot, start)
+
+    async def tc_ui_44_calendar_drag_to_create(self):
+        """TC-UI-44: Drag on empty slot renders selection ghost and opens modal."""
+        start = await self._step("TC-UI-44")
+        try:
+            await self._set_viewport("desktop")
+            await self._go("/calendar", wait=2.0)
+
+            col = self.page.locator("[data-calendar-day]").first
+            if await col.count() == 0:
+                self._record("TC-UI-44", "FAIL", "no day columns found", None, start)
+                return
+            box = await col.bounding_box()
+            if not box:
+                self._record("TC-UI-44", "FAIL", "column has no bbox", None, start)
+                return
+
+            # Pick a point well below the day header — below any existing events
+            x = box["x"] + box["width"] / 2
+            y_start = box["y"] + box["height"] - 160
+            y_end = y_start + 96  # ~1.5 hours at HOUR_HEIGHT=64
+
+            await self.page.mouse.move(x, y_start)
+            await self.page.mouse.down()
+            await self.page.mouse.move(x, y_end, steps=18)
+            await asyncio.sleep(0.3)
+
+            ghost = self.page.locator("[data-testid='selection-ghost']")
+            ghost_visible = await ghost.count() > 0
+            ghost_text = (await ghost.text_content()) if ghost_visible else ""
+
+            await self.page.mouse.up()
+            await asyncio.sleep(0.7)
+
+            modal_time_inputs = await self.page.locator("input[type='time']").count()
+
+            # Close modal so other tests start clean
+            await self.page.keyboard.press("Escape")
+            await asyncio.sleep(0.3)
+
+            screenshot = await self._screenshot("tc_ui_44_drag_to_create")
+            issues: list[str] = []
+            if not ghost_visible:
+                issues.append("selection-ghost did not render")
+            if not any(sep in ghost_text for sep in ("–", "-")):
+                issues.append(f"ghost label lacks range separator: {ghost_text!r}")
+            if modal_time_inputs < 2:
+                issues.append(f"create modal missing time inputs (found {modal_time_inputs})")
+
+            status = "PASS" if not issues else "WARN"
+            self._record(
+                "TC-UI-44", status,
+                f"ghost={ghost_visible} label={ghost_text!r} time_inputs={modal_time_inputs}"
+                + (f" | {'; '.join(issues)}" if issues else ""),
+                screenshot, start,
+            )
+        except Exception as e:
+            screenshot = await self._screenshot("tc_ui_44_err")
+            self._record("TC-UI-44", "FAIL", f"Exception: {e}", screenshot, start)
+
+    async def tc_ui_45_calendar_event_edit(self):
+        """TC-UI-45: Click event → Edit button opens pre-filled modal."""
+        start = await self._step("TC-UI-45")
+        try:
+            await self._set_viewport("desktop")
+            await self._go("/calendar", wait=2.0)
+
+            first_event = self.page.locator("[data-testid^='event-']").first
+            if await first_event.count() == 0:
+                self._record("TC-UI-45", "SKIP", "no events to edit", None, start)
+                return
+
+            await first_event.click()
+            await asyncio.sleep(0.4)
+
+            edit_btn = self.page.get_by_role("button", name="Редактировать")
+            if await edit_btn.count() == 0:
+                screenshot = await self._screenshot("tc_ui_45_no_edit_btn")
+                self._record("TC-UI-45", "FAIL", "Edit button not found in popup", screenshot, start)
+                return
+
+            await edit_btn.first.click()
+            await asyncio.sleep(0.5)
+
+            # Title is the first text/search input rendered in the modal form
+            title_input = self.page.locator(
+                "div[style*='position: fixed'] input[type='text'],"
+                " div[style*='position: fixed'] input:not([type])"
+            ).first
+            time_count = await self.page.locator("input[type='time']").count()
+            date_count = await self.page.locator("input[type='date']").count()
+            title_val = await title_input.input_value() if await title_input.count() > 0 else ""
+
+            # Close without saving
+            await self.page.keyboard.press("Escape")
+            await asyncio.sleep(0.3)
+
+            screenshot = await self._screenshot("tc_ui_45_event_edit")
+            issues: list[str] = []
+            if not title_val:
+                issues.append("title input not pre-filled")
+            if time_count < 2:
+                issues.append(f"time inputs missing (found {time_count})")
+            if date_count < 1:
+                issues.append("date input missing")
+
+            status = "PASS" if not issues else "WARN"
+            self._record(
+                "TC-UI-45", status,
+                f"title={title_val!r} times={time_count} dates={date_count}"
+                + (f" | {'; '.join(issues)}" if issues else ""),
+                screenshot, start,
+            )
+        except Exception as e:
+            screenshot = await self._screenshot("tc_ui_45_err")
+            self._record("TC-UI-45", "FAIL", f"Exception: {e}", screenshot, start)
+
+    async def tc_ui_46_calendar_tz_roundtrip(self):
+        """TC-UI-46: New event at 14:00 renders at 14:00 (no +offset drift)."""
+        start = await self._step("TC-UI-46")
+        try:
+            await self._set_viewport("desktop")
+            await self._go("/calendar", wait=2.0)
+
+            add_btn = self.page.locator("button:has-text('Новое событие')").first
+            if await add_btn.count() == 0:
+                self._record("TC-UI-46", "FAIL", "Новое событие button not found", None, start)
+                return
+            await add_btn.click()
+            await asyncio.sleep(0.5)
+
+            # Title input inside the modal
+            title_input = self.page.locator(
+                "div[style*='position: fixed'] input[type='text'],"
+                " div[style*='position: fixed'] input:not([type])"
+            ).first
+            unique_title = "TITAN TZ roundtrip"
+            await title_input.fill(unique_title)
+
+            # Times
+            time_inputs = self.page.locator("input[type='time']")
+            if await time_inputs.count() < 2:
+                screenshot = await self._screenshot("tc_ui_46_no_times")
+                self._record("TC-UI-46", "FAIL",
+                             f"modal missing time inputs ({await time_inputs.count()})",
+                             screenshot, start)
+                return
+            await time_inputs.nth(0).fill("14:00")
+            await time_inputs.nth(1).fill("15:00")
+
+            save_btn = self.page.get_by_role("button", name="Сохранить").first
+            await save_btn.click()
+            await asyncio.sleep(1.5)
+
+            # Find the freshly created card
+            created = self.page.locator(f"[data-testid^='event-']:has-text('{unique_title}')").first
+            has_card = await created.count() > 0
+            card_text = (await created.text_content()) if has_card else ""
+
+            screenshot = await self._screenshot("tc_ui_46_tz_roundtrip")
+            issues: list[str] = []
+            if not has_card:
+                issues.append("new event not visible")
+            elif "14:00" not in card_text:
+                issues.append(f"card text has no 14:00 → TZ drift likely: {card_text[:80]!r}")
+            if has_card and "17:00" in card_text:
+                issues.append("card shows 17:00 — UTC+3 drift still present")
+
+            status = "PASS" if not issues else "FAIL"
+            self._record(
+                "TC-UI-46", status,
+                f"card={has_card} text={card_text[:100]!r}"
+                + (f" | {'; '.join(issues)}" if issues else ""),
+                screenshot, start,
+            )
+        except Exception as e:
+            screenshot = await self._screenshot("tc_ui_46_err")
+            self._record("TC-UI-46", "FAIL", f"Exception: {e}", screenshot, start)
+
+    async def tc_ui_47_calendar_horizontal_drag(self):
+        """TC-UI-47: Event dragged across days lands in a different calendar day."""
+        start = await self._step("TC-UI-47")
+        try:
+            await self._set_viewport("desktop")
+            await self._go("/calendar", wait=2.0)
+
+            # Pick an event that is guaranteed to be in the visible viewport
+            # (the very first DOM event may be scrolled above the fold)
+            events_loc = self.page.locator("[data-testid^='event-']")
+            count = await events_loc.count()
+            if count == 0:
+                self._record("TC-UI-47", "SKIP", "no events to drag", None, start)
+                return
+
+            # Skip events that are hidden behind the day-header row (y < ~280).
+            # The calendar day header + all-day row occupies roughly the first 260px.
+            first_event = None
+            for i in range(count):
+                candidate = events_loc.nth(i)
+                cb = await candidate.bounding_box()
+                if cb and cb["y"] >= 280 and cb["y"] + cb["height"] < 860:
+                    first_event = candidate
+                    break
+            if first_event is None:
+                first_event = events_loc.first
+                await first_event.scroll_into_view_if_needed()
+                await asyncio.sleep(0.2)
+
+            # Capture a stable identifier so re-location after drag matches the SAME event
+            testid = await first_event.get_attribute("data-testid")
+            origin_day = await first_event.evaluate(
+                "el => el.closest('[data-calendar-day]')?.getAttribute('data-calendar-day') || ''"
+            )
+            box = await first_event.bounding_box()
+            col_w = await first_event.evaluate(
+                "el => el.closest('[data-calendar-day]')?.getBoundingClientRect().width || 0"
+            )
+            if not box or not origin_day or not testid:
+                self._record("TC-UI-47", "FAIL",
+                             f"bbox={box} origin={origin_day!r} testid={testid!r}",
+                             None, start)
+                return
+
+            col_w = float(col_w) or 200.0
+            sx = box["x"] + box["width"] / 2
+            sy = box["y"] + 10
+            await self.page.mouse.move(sx, sy)
+            await self.page.mouse.down()
+            # Shift by ~1.6 column widths so the drop reliably lands in a neighbouring day
+            await self.page.mouse.move(sx + int(col_w * 1.6), sy, steps=25)
+            await self.page.mouse.up()
+            await asyncio.sleep(1.2)
+
+            # Re-locate the SAME event (not just "first") since the DOM may reorder
+            reloc = self.page.locator(f"[data-testid='{testid}']").first
+            new_day = await reloc.evaluate(
+                "el => el.closest('[data-calendar-day]')?.getAttribute('data-calendar-day') || ''"
+            ) if await reloc.count() > 0 else ""
+
+            screenshot = await self._screenshot("tc_ui_47_horizontal_drag")
+            issues: list[str] = []
+            if not new_day:
+                issues.append("could not read new day attribute")
+            elif new_day == origin_day:
+                issues.append(f"day unchanged: {origin_day} — horizontal drag not applied")
+
+            status = "PASS" if not issues else "WARN"
+            self._record(
+                "TC-UI-47", status,
+                f"origin={origin_day} new={new_day}"
+                + (f" | {'; '.join(issues)}" if issues else ""),
+                screenshot, start,
+            )
+        except Exception as e:
+            screenshot = await self._screenshot("tc_ui_47_err")
+            self._record("TC-UI-47", "FAIL", f"Exception: {e}", screenshot, start)
+
+    async def tc_ui_48_calendar_escape_cancels_create(self):
+        """TC-UI-48: Escape during drag-to-create cancels the selection (no modal)."""
+        start = await self._step("TC-UI-48")
+        try:
+            await self._set_viewport("desktop")
+            await self._go("/calendar", wait=2.0)
+
+            col = self.page.locator("[data-calendar-day]").first
+            if await col.count() == 0:
+                self._record("TC-UI-48", "FAIL", "no day columns found", None, start)
+                return
+            box = await col.bounding_box()
+            if not box:
+                self._record("TC-UI-48", "FAIL", "column has no bbox", None, start)
+                return
+
+            x = box["x"] + box["width"] / 2
+            y = box["y"] + box["height"] - 160
+            await self.page.mouse.move(x, y)
+            await self.page.mouse.down()
+            await self.page.mouse.move(x, y + 60, steps=12)
+            await asyncio.sleep(0.3)
+            ghost_mid = await self.page.locator("[data-testid='selection-ghost']").count() > 0
+            await self.page.keyboard.press("Escape")
+            await asyncio.sleep(0.2)
+            ghost_after = await self.page.locator("[data-testid='selection-ghost']").count() > 0
+            await self.page.mouse.up()
+            await asyncio.sleep(0.5)
+
+            modal_time_inputs = await self.page.locator("input[type='time']").count()
+
+            screenshot = await self._screenshot("tc_ui_48_escape_cancel")
+            issues: list[str] = []
+            if not ghost_mid:
+                issues.append("ghost never appeared during drag")
+            if ghost_after:
+                issues.append("ghost still visible after Escape")
+            if modal_time_inputs > 0:
+                issues.append("create modal opened despite Escape")
+
+            status = "PASS" if not issues else "WARN"
+            self._record(
+                "TC-UI-48", status,
+                f"ghost_mid={ghost_mid} ghost_after={ghost_after} modal_times={modal_time_inputs}"
+                + (f" | {'; '.join(issues)}" if issues else ""),
+                screenshot, start,
+            )
+        except Exception as e:
+            screenshot = await self._screenshot("tc_ui_48_err")
+            self._record("TC-UI-48", "FAIL", f"Exception: {e}", screenshot, start)
+
+    # ══════════════════════════════════════════════════════════════════════
     # Runner
     # ══════════════════════════════════════════════════════════════════════
 
@@ -1126,6 +1487,12 @@ class IdevCrmScenarios(BaseScenario):
             "TC-UI-40": self.tc_ui_40_mobile_drawer_closes,
             "TC-UI-41": self.tc_ui_41_mobile_add_client,
             "TC-UI-42": self.tc_ui_42_tablet_layout,
+            "TC-UI-43": self.tc_ui_43_backlog_grid_width,
+            "TC-UI-44": self.tc_ui_44_calendar_drag_to_create,
+            "TC-UI-45": self.tc_ui_45_calendar_event_edit,
+            "TC-UI-46": self.tc_ui_46_calendar_tz_roundtrip,
+            "TC-UI-47": self.tc_ui_47_calendar_horizontal_drag,
+            "TC-UI-48": self.tc_ui_48_calendar_escape_cancels_create,
             "TC-API-01": self.tc_api_01_check_tax_id,
             "TC-API-02": self.tc_api_02_sync_client,
             "TC-API-03": self.tc_api_03_provider_info,

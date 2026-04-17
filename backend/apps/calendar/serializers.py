@@ -26,3 +26,15 @@ class CalendarEventSerializer(serializers.ModelSerializer):
         if obj.created_by:
             return getattr(obj.created_by, 'full_name', None) or obj.created_by.email
         return None
+
+    def validate(self, attrs):
+        # For partial updates (PATCH) fall back to the existing instance values
+        start = attrs.get('start_datetime') or getattr(self.instance, 'start_datetime', None)
+        end = attrs.get('end_datetime')
+        if end is None and 'end_datetime' not in attrs:
+            end = getattr(self.instance, 'end_datetime', None)
+        if start and end and end <= start:
+            raise serializers.ValidationError({
+                'end_datetime': 'end_datetime must be strictly greater than start_datetime',
+            })
+        return attrs

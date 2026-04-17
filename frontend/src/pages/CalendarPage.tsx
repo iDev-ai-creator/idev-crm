@@ -111,6 +111,14 @@ function parseLocalDatetime(iso: string): Date {
   return new Date(iso)
 }
 
+function localOffsetSuffix(d: Date = new Date()): string {
+  // Browser timezone offset in minutes, signed: +3h Cyprus → returns "+03:00"
+  const tzMin = -d.getTimezoneOffset()
+  const sign = tzMin >= 0 ? '+' : '-'
+  const abs = Math.abs(tzMin)
+  return `${sign}${String(Math.floor(abs / 60)).padStart(2, '0')}:${String(abs % 60).padStart(2, '0')}`
+}
+
 function formatLocalDatetime(d: Date): string {
   const y = d.getFullYear()
   const mo = String(d.getMonth() + 1).padStart(2, '0')
@@ -118,7 +126,17 @@ function formatLocalDatetime(d: Date): string {
   const h = String(d.getHours()).padStart(2, '0')
   const mi = String(d.getMinutes()).padStart(2, '0')
   const s = String(d.getSeconds()).padStart(2, '0')
-  return `${y}-${mo}-${da}T${h}:${mi}:${s}`
+  // Include local offset so Django (USE_TZ=True, TIME_ZONE=UTC) doesn't
+  // misinterpret the wall-clock time as UTC and shift it on read-back.
+  return `${y}-${mo}-${da}T${h}:${mi}:${s}${localOffsetSuffix(d)}`
+}
+
+function buildLocalDatetime(date: string, time: string): string {
+  // Build a tz-aware ISO for "YYYY-MM-DD" + "HH:MM" interpreted as local wall clock.
+  const [y, mo, da] = date.split('-').map(Number)
+  const [h, mi] = time.split(':').map(Number)
+  const d = new Date(y, mo - 1, da, h, mi, 0, 0)
+  return formatLocalDatetime(d)
 }
 
 const DEFAULT_EVENT_DURATION_MS = 60 * 60 * 1000
@@ -204,43 +222,18 @@ function buildDayEventLayout(dayEvents: CalendarEvent[]): Map<number, { lane: nu
 }
 
 function ymdUnderPointer(clientX: number, clientY: number, validYmds: Set<string>): string | null {
-  const nodes = document.elementsFromPoint(clientX, clientY)
-  for (const n of nodes) {
-    const el = n as HTMLElement
-    const c = el.closest?.('[data-calendar-day]') as HTMLElement | null
-    const y = c?.dataset.calendarDay
-    if (y && validYmds.has(y)) return y
-  }
-  return null
-}
-
-function dayDiffYmd(fromYmd: string, toYmd: string): number {
-  const [y0, m0, d0] = fromYmd.split('-').map(Number)
-  const [y1, m1, d1] = toYmd.split('-').map(Number)
-  const t0 = Date.UTC(y0, m0 - 1, d0)
-  const t1 = Date.UTC(y1, m1 - 1, d1)
-  return Math.round((t1 - t0) / 86400000)
+  // elementFromPoint (singular) is pointer-events aware — unlike elementsFromPoint,
+  // it skips elements whose `pointer-events: none` is set, so the dragged card
+  // (which we neutralize during drag) doesn't overshadow the real day column beneath.
+  const el = document.elementFromPoint(clientX, clientY) as HTMLElement | null
+  if (!el) return null
+  const col = el.closest('[data-calendar-day]') as HTMLElement | null
+  const y = col?.dataset.calendarDay
+  return y && validYmds.has(y) ? y : null
 }
 
 function addMinutes(d: Date, mins: number): Date {
   return new Date(d.getTime() + mins * 60000)
-}
-
-function shiftDateByDays(d: Date, deltaDays: number): Date {
-  const o = new Date(d.getTime())
-  o.setDate(o.getDate() + deltaDays)
-  return o
-}
-
-/** Keep timed events inside the visible 8:00–21:45 grid when dropping */
-function clampToVisibleGrid(d: Date): Date {
-  const o = new Date(d)
-  let total = o.getHours() * 60 + o.getMinutes()
-  const lo = 8 * 60
-  const hi = 21 * 60 + 45
-  total = Math.max(lo, Math.min(hi, total))
-  o.setHours(Math.floor(total / 60), total % 60, 0, 0)
-  return o
 }
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -440,6 +433,7 @@ function WeekGrid({
 }: WeekGridProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [nowTick, setNowTick] = useState(() => new Date())
+  const scrolledForWeekRef = useRef<string | null>(null)
 
   // Keep "now" indicator fresh
   useEffect(() => {
@@ -447,10 +441,14 @@ function WeekGrid({
     return () => clearInterval(id)
   }, [])
 
-  // Scroll smartly: to "now" if today is in the week, otherwise to earliest event, otherwise 9:00
+  // Scroll smartly once per week-switch — depends on weekDays only, not events,
+  // so mutations (drag / resize / create) don't yank the viewport back to "now".
+  const weekKey = weekDays.length ? toYMD(weekDays[0]) : ''
   useEffect(() => {
     const el = scrollRef.current
-    if (!el) return
+    if (!el || !weekKey) return
+    if (scrolledForWeekRef.current === weekKey) return
+    scrolledForWeekRef.current = weekKey
     const todayYMD = toYMD(new Date())
     const isThisWeek = weekDays.some((d) => toYMD(d) === todayYMD)
     let targetHour = 9
@@ -464,7 +462,8 @@ function WeekGrid({
       if (earliest !== undefined) targetHour = Math.max(8, earliest - 1)
     }
     el.scrollTop = Math.max(0, (targetHour - 8) * HOUR_HEIGHT - 40)
-  }, [weekDays, events])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekKey])
 
   const eventsForDay = (dayYMD: string) =>
     events.filter(ev => {
@@ -500,31 +499,7 @@ function WeekGrid({
 
   const weekYmdSet = useMemo(() => new Set(weekDays.map(d => toYMD(d))), [weekDays])
 
-  const dragRef = useRef<{
-    pointerId: number
-    startY: number
-    startX: number
-    ev: CalendarEvent
-    originYmd: string
-    origStart: Date
-    origEnd: Date | null
-    durationMs: number
-    moved: boolean
-    captureEl: HTMLElement
-  } | null>(null)
-
   const [draggingEvId, setDraggingEvId] = useState<number | null>(null)
-  // Resize state (separate from drag — acts on the bottom edge only)
-  const resizeRef = useRef<{
-    pointerId: number
-    startY: number
-    ev: CalendarEvent
-    origStart: Date
-    origEnd: Date
-    origHeight: number
-    cardEl: HTMLElement
-    captureEl: HTMLElement
-  } | null>(null)
   const [resizingEvId, setResizingEvId] = useState<number | null>(null)
 
   // Drag-to-create selection (Apple Calendar-style)
@@ -534,46 +509,80 @@ function WeekGrid({
     currentRelY: number
   } | null>(null)
 
+  // Single in-flight drag cleanup — aborted on unmount or when a new drag starts
+  const activeDragCleanupRef = useRef<(() => void) | null>(null)
+  useEffect(() => () => {
+    activeDragCleanupRef.current?.()
+    activeDragCleanupRef.current = null
+  }, [])
+
+  const GRID_MINUTES = (22 - 8) * 60 // 840
+
   const bindSlotPointerDragCreate = useCallback(
     (down: React.MouseEvent<HTMLDivElement>, ymd: string) => {
       if (down.button !== 0) return
-      // Skip when user clicks on an event card or its resize handle
       const target = down.target as HTMLElement
       if (target.closest('.event-card') || target.closest('.resize-handle')) return
 
+      activeDragCleanupRef.current?.()
+
       const columnEl = down.currentTarget
-      const rect = columnEl.getBoundingClientRect()
-      const startRelY = down.clientY - rect.top
+      const relAt = (clientY: number) => {
+        const r = columnEl.getBoundingClientRect()
+        return Math.max(0, Math.min(HOURS.length * HOUR_HEIGHT, clientY - r.top))
+      }
+      const startRelY = relAt(down.clientY)
       let dragged = false
 
+      const controller = new AbortController()
+      const signal = controller.signal
+
       const move = (me: MouseEvent) => {
-        const currentRelY = me.clientY - rect.top
+        const currentRelY = relAt(me.clientY)
         if (!dragged && Math.abs(currentRelY - startRelY) > 4) dragged = true
-        if (dragged) {
-          setSelectionDrag({ ymd, startRelY, currentRelY })
-        }
+        if (dragged) setSelectionDrag({ ymd, startRelY, currentRelY })
       }
 
-      const finish = (me: MouseEvent) => {
-        document.removeEventListener('mousemove', move)
-        document.removeEventListener('mouseup', finish)
-        const currentRelY = me.clientY - rect.top
-        setSelectionDrag(null)
+      const emitIfDragged = (clientY: number) => {
         if (!dragged) return
+        const currentRelY = relAt(clientY)
         const lo = Math.min(startRelY, currentRelY)
         const hi = Math.max(startRelY, currentRelY)
         const startTime = timeFromRelY(lo)
         let endTime = timeFromRelY(hi)
         if (endTime === startTime) {
           const [h, m] = startTime.split(':').map(Number)
-          const next = h * 60 + m + 30
-          endTime = `${String(Math.floor(next / 60)).padStart(2, '0')}:${String(next % 60).padStart(2, '0')}`
+          const nextTotal = Math.min(22 * 60, h * 60 + m + 30)
+          endTime = `${String(Math.floor(nextTotal / 60)).padStart(2, '0')}:${String(nextTotal % 60).padStart(2, '0')}`
         }
+        if (startTime === endTime) return
         onSlotDoubleClick(ymd, startTime, endTime)
       }
 
-      document.addEventListener('mousemove', move)
-      document.addEventListener('mouseup', finish)
+      const teardown = () => {
+        controller.abort()
+        setSelectionDrag(null)
+        if (activeDragCleanupRef.current === teardown) activeDragCleanupRef.current = null
+      }
+
+      const finish = (me: MouseEvent) => {
+        const wasDragged = dragged
+        const lastY = me.clientY
+        teardown()
+        if (wasDragged) emitIfDragged(lastY)
+      }
+
+      const onKey = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          dragged = false
+          teardown()
+        }
+      }
+
+      document.addEventListener('mousemove', move, { signal })
+      document.addEventListener('mouseup', finish, { signal })
+      document.addEventListener('keydown', onKey, { signal })
+      activeDragCleanupRef.current = teardown
     },
     [onSlotDoubleClick],
   )
@@ -581,12 +590,13 @@ function WeekGrid({
   const bindEventPointerResize = useCallback(
     (down: React.MouseEvent<HTMLDivElement>, ev: CalendarEvent) => {
       if (down.button !== 0) return
-      // Stop propagation so the outer drag handler does not also activate
       down.stopPropagation()
       down.preventDefault()
       const handleEl = down.currentTarget
       const cardEl = handleEl.closest<HTMLElement>('.event-card')
       if (!cardEl) return
+
+      activeDragCleanupRef.current?.()
 
       const origStart = parseLocalDatetime(ev.start_datetime)
       const origEnd = ev.end_datetime
@@ -595,10 +605,17 @@ function WeekGrid({
 
       const startY = down.clientY
       const origHeight = cardEl.getBoundingClientRect().height
-      resizeRef.current = {
-        pointerId: 0, startY, ev, origStart, origEnd, origHeight, cardEl, captureEl: handleEl,
-      }
       setResizingEvId(ev.id)
+
+      const controller = new AbortController()
+      const signal = controller.signal
+
+      const teardown = () => {
+        controller.abort()
+        cardEl.style.height = ''
+        setResizingEvId(null)
+        if (activeDragCleanupRef.current === teardown) activeDragCleanupRef.current = null
+      }
 
       const move = (me: MouseEvent) => {
         const next = Math.max(15, origHeight + (me.clientY - startY))
@@ -606,13 +623,9 @@ function WeekGrid({
       }
 
       const finish = (me: MouseEvent) => {
-        document.removeEventListener('mousemove', move)
-        document.removeEventListener('mouseup', finish)
-        cardEl.style.height = ''
-        resizeRef.current = null
-        setResizingEvId(null)
-
-        const dMin = Math.round(((me.clientY - startY) / HOUR_HEIGHT) * (60 / 15)) * 15
+        const dY = me.clientY - startY
+        teardown()
+        const dMin = Math.round((dY / HOUR_HEIGHT) * (60 / 15)) * 15
         let newEnd = addMinutes(origEnd, dMin)
         const minEnd = addMinutes(origStart, 15)
         if (newEnd.getTime() < minEnd.getTime()) newEnd = minEnd
@@ -621,8 +634,12 @@ function WeekGrid({
         }
       }
 
-      document.addEventListener('mousemove', move)
-      document.addEventListener('mouseup', finish)
+      const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') teardown() }
+
+      document.addEventListener('mousemove', move, { signal })
+      document.addEventListener('mouseup', finish, { signal })
+      document.addEventListener('keydown', onKey, { signal })
+      activeDragCleanupRef.current = teardown
     },
     [onEventResize],
   )
@@ -633,63 +650,94 @@ function WeekGrid({
       down.stopPropagation()
       const el = down.currentTarget
 
+      activeDragCleanupRef.current?.()
+
+      // Offset of pointer from the card's top edge — used to keep the grabbed point
+      // under the cursor on drop (Apple Calendar behaviour; snap destination, not delta).
+      const cardRect = el.getBoundingClientRect()
+      const grabOffsetY = down.clientY - cardRect.top
+
       const origStart = parseLocalDatetime(ev.start_datetime)
       const origEnd = ev.end_datetime ? parseLocalDatetime(ev.end_datetime) : null
       const durationMs = origEnd ? origEnd.getTime() - origStart.getTime() : DEFAULT_EVENT_DURATION_MS
 
       const startX = down.clientX
       const startY = down.clientY
-      dragRef.current = {
-        pointerId: 0, startY, startX, ev, originYmd, origStart, origEnd, durationMs,
-        moved: false, captureEl: el,
-      }
+      let moved = false
+
       setDraggingEvId(ev.id)
+
+      const controller = new AbortController()
+      const signal = controller.signal
+
+      const clearStyles = () => {
+        el.style.transform = ''
+        el.style.pointerEvents = ''
+      }
+
+      const teardown = () => {
+        controller.abort()
+        clearStyles()
+        setDraggingEvId(null)
+        if (activeDragCleanupRef.current === teardown) activeDragCleanupRef.current = null
+      }
 
       const move = (me: MouseEvent) => {
         const dx = me.clientX - startX
         const dy = me.clientY - startY
-        if (Math.hypot(dx, dy) > 5 && dragRef.current) {
-          dragRef.current.moved = true
-          // Disable pointer events on the card so elementsFromPoint (for day detection) sees the columns underneath
+        if (!moved && Math.hypot(dx, dy) > 5) {
+          moved = true
+          // Disable hit-testing on the dragged card so elementsFromPoint sees the day column underneath
           el.style.pointerEvents = 'none'
         }
         el.style.transform = `translate3d(${dx}px, ${dy}px, 0)`
       }
 
       const finish = (me: MouseEvent) => {
-        document.removeEventListener('mousemove', move)
-        document.removeEventListener('mouseup', finish)
-        el.style.transform = ''
-        el.style.pointerEvents = ''
-        const s = dragRef.current
-        dragRef.current = null
-        setDraggingEvId(null)
-        if (!s) return
-        // rebind remaining handlers to the captured snapshot `s`
-        const pe = me as unknown as { clientX: number; clientY: number; type: string }
-
-        if (pe.type === 'pointercancel') return
-
-        const dist = Math.hypot(pe.clientX - s.startX, pe.clientY - s.startY)
-        const isDrag = s.moved || dist > 5
+        // Unbind listeners first so nothing can re-enter
+        controller.abort()
+        const isDrag = moved || Math.hypot(me.clientX - startX, me.clientY - startY) > 5
 
         if (isDrag) {
-          const dMin = Math.round(((pe.clientY - s.startY) / HOUR_HEIGHT) * (60 / 15)) * 15
-          const targetYmd = ymdUnderPointer(pe.clientX, pe.clientY, weekYmdSet) ?? s.originYmd
-          const dayShift = dayDiffYmd(s.originYmd, targetYmd)
-          let newStart = addMinutes(s.origStart, dMin)
-          newStart = shiftDateByDays(newStart, dayShift)
-          newStart = clampToVisibleGrid(newStart)
-          const newEnd =
-            s.origEnd != null ? new Date(newStart.getTime() + s.durationMs) : null
-          if (newStart.getTime() !== s.origStart.getTime()) onEventMove(s.ev, newStart, newEnd)
+          // IMPORTANT: query target column BEFORE restoring pointer-events,
+          // otherwise the dragged card itself gets hit-tested and the origin column wins.
+          const targetYmd = ymdUnderPointer(me.clientX, me.clientY, weekYmdSet) ?? originYmd
+          const colEl = document.querySelector<HTMLElement>(`[data-calendar-day="${targetYmd}"]`)
+          clearStyles()
+          setDraggingEvId(null)
+          if (activeDragCleanupRef.current === teardown) activeDragCleanupRef.current = null
+
+          if (colEl) {
+            // Destination-snap: where the TOP of the card should land in column-content coords.
+            const colRect = colEl.getBoundingClientRect()
+            const newTopPx = me.clientY - colRect.top - grabOffsetY
+            const maxStartMin = GRID_MINUTES - 15
+            const snappedMin = Math.max(
+              0,
+              Math.min(maxStartMin, Math.round((newTopPx / HOUR_HEIGHT) * 4) * 15),
+            )
+            const [yy, mm, dd] = targetYmd.split('-').map(Number)
+            const newStart = new Date(yy, mm - 1, dd, 8, 0, 0, 0)
+            newStart.setMinutes(snappedMin)
+            const newEnd = origEnd != null ? new Date(newStart.getTime() + durationMs) : null
+            if (newStart.getTime() !== origStart.getTime()) onEventMove(ev, newStart, newEnd)
+          }
         } else {
-          onEventClick(s.ev, pe.clientX, pe.clientY)
+          clearStyles()
+          setDraggingEvId(null)
+          if (activeDragCleanupRef.current === teardown) activeDragCleanupRef.current = null
+          onEventClick(ev, me.clientX, me.clientY)
         }
       }
 
-      document.addEventListener('mousemove', move)
-      document.addEventListener('mouseup', finish)
+      const onKey = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') teardown()
+      }
+
+      document.addEventListener('mousemove', move, { signal })
+      document.addEventListener('mouseup', finish, { signal })
+      document.addEventListener('keydown', onKey, { signal })
+      activeDragCleanupRef.current = teardown
     },
     [onEventClick, onEventMove, weekYmdSet],
   )
@@ -880,6 +928,8 @@ function WeekGrid({
                   const endTimeLabel = timeFromRelY(hi)
                   return (
                     <div
+                      data-testid="selection-ghost"
+                      role="presentation"
                       style={{
                         position: 'absolute',
                         top: lo,
@@ -895,6 +945,7 @@ function WeekGrid({
                         fontSize: 10,
                         fontWeight: 600,
                         color: 'var(--accent)',
+                        userSelect: 'none',
                       }}
                     >
                       {startTimeLabel} – {endTimeLabel}
@@ -1163,24 +1214,53 @@ function MonthGrid({ year, month, events, allDayItems, today, onDayDoubleClick, 
 
 interface CreateModalProps {
   initial: CreateModal
+  editingEvent?: CalendarEvent | null
   onSave: (payload: Partial<CalendarEvent>) => Promise<void>
   onClose: () => void
 }
 
-function CreateEventModal({ initial, onSave, onClose }: CreateModalProps) {
-  const [title, setTitle] = useState('')
-  const [type, setType] = useState<'event' | 'reminder' | 'busy'>(initial.type)
-  const [date, setDate] = useState(initial.date)
-  const [startTime, setStartTime] = useState(initial.time)
-  const [endTime, setEndTime] = useState(() => {
-    if (initial.endTime) return initial.endTime
-    const [h, m] = initial.time.split(':').map(Number)
-    const endH = h + 1
-    return `${String(endH > 23 ? 23 : endH).padStart(2, '0')}:${String(m).padStart(2, '0')}`
-  })
-  const [description, setDescription] = useState('')
-  const [color, setColor] = useState('blue')
-  const [allDay, setAllDay] = useState(false)
+function CreateEventModal({ initial, editingEvent, onSave, onClose }: CreateModalProps) {
+  const isEditing = !!editingEvent
+
+  const pre = (() => {
+    if (!editingEvent) {
+      const [h, m] = initial.time.split(':').map(Number)
+      const endH = h + 1
+      const fallbackEnd = `${String(endH > 23 ? 23 : endH).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+      return {
+        title: '',
+        type: initial.type,
+        date: initial.date,
+        startTime: initial.time,
+        endTime: initial.endTime ?? fallbackEnd,
+        description: '',
+        color: 'blue',
+        allDay: false,
+      }
+    }
+    const s = parseLocalDatetime(editingEvent.start_datetime)
+    const e = editingEvent.end_datetime ? parseLocalDatetime(editingEvent.end_datetime) : null
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return {
+      title: editingEvent.title,
+      type: editingEvent.event_type,
+      date: `${s.getFullYear()}-${pad(s.getMonth() + 1)}-${pad(s.getDate())}`,
+      startTime: `${pad(s.getHours())}:${pad(s.getMinutes())}`,
+      endTime: e ? `${pad(e.getHours())}:${pad(e.getMinutes())}` : `${pad(s.getHours() + 1)}:${pad(s.getMinutes())}`,
+      description: editingEvent.description ?? '',
+      color: editingEvent.color || 'blue',
+      allDay: editingEvent.all_day,
+    }
+  })()
+
+  const [title, setTitle] = useState(pre.title)
+  const [type, setType] = useState<'event' | 'reminder' | 'busy'>(pre.type)
+  const [date, setDate] = useState(pre.date)
+  const [startTime, setStartTime] = useState(pre.startTime)
+  const [endTime, setEndTime] = useState(pre.endTime)
+  const [description, setDescription] = useState(pre.description)
+  const [color, setColor] = useState(pre.color)
+  const [allDay, setAllDay] = useState(pre.allDay)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -1195,8 +1275,8 @@ function CreateEventModal({ initial, onSave, onClose }: CreateModalProps) {
         description,
         color,
         all_day: allDay,
-        start_datetime: `${date}T${startTime}:00`,
-        end_datetime: allDay ? null : `${date}T${endTime}:00`,
+        start_datetime: buildLocalDatetime(date, startTime),
+        end_datetime: allDay ? null : buildLocalDatetime(date, endTime),
       }
       await onSave(payload)
       onClose()
@@ -1230,7 +1310,9 @@ function CreateEventModal({ initial, onSave, onClose }: CreateModalProps) {
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>
-            {type === 'reminder' ? 'Новое напоминание' : type === 'busy' ? 'Занят' : 'Новое событие'}
+            {isEditing
+              ? (type === 'reminder' ? 'Редактировать напоминание' : type === 'busy' ? 'Редактировать «Занят»' : 'Редактировать событие')
+              : (type === 'reminder' ? 'Новое напоминание' : type === 'busy' ? 'Занят' : 'Новое событие')}
           </h3>
           <button
             onClick={onClose}
@@ -1490,10 +1572,11 @@ interface DetailPopupProps {
   x: number
   y: number
   onDelete: (id: number) => Promise<void>
+  onEdit: (event: CalendarEvent) => void
   onClose: () => void
 }
 
-function EventDetailPopup({ event, x, y, onDelete, onClose }: DetailPopupProps) {
+function EventDetailPopup({ event, x, y, onDelete, onEdit, onClose }: DetailPopupProps) {
   const [deleting, setDeleting] = useState(false)
   const popupRef = useRef<HTMLDivElement>(null)
 
@@ -1589,29 +1672,51 @@ function EventDetailPopup({ event, x, y, onDelete, onClose }: DetailPopupProps) 
         </div>
       )}
 
-      <button
-        onClick={handleDelete}
-        disabled={deleting}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          padding: '7px 12px',
-          borderRadius: 6,
-          border: '1px solid rgba(239,68,68,0.3)',
-          background: 'rgba(239,68,68,0.08)',
-          color: '#ef4444',
-          cursor: deleting ? 'not-allowed' : 'pointer',
-          fontSize: 12,
-          fontWeight: 600,
-          width: '100%',
-          justifyContent: 'center',
-          opacity: deleting ? 0.6 : 1,
-        }}
-      >
-        <TrashIcon />
-        {deleting ? 'Удаление...' : 'Удалить событие'}
-      </button>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button
+          onClick={() => onEdit(event)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '7px 12px',
+            borderRadius: 6,
+            border: '1px solid var(--border)',
+            background: 'transparent',
+            color: 'var(--text)',
+            cursor: 'pointer',
+            fontSize: 12,
+            fontWeight: 600,
+            flex: 1,
+            justifyContent: 'center',
+          }}
+        >
+          Редактировать
+        </button>
+        <button
+          onClick={handleDelete}
+          disabled={deleting}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '7px 12px',
+            borderRadius: 6,
+            border: '1px solid rgba(239,68,68,0.3)',
+            background: 'rgba(239,68,68,0.08)',
+            color: '#ef4444',
+            cursor: deleting ? 'not-allowed' : 'pointer',
+            fontSize: 12,
+            fontWeight: 600,
+            flex: 1,
+            justifyContent: 'center',
+            opacity: deleting ? 0.6 : 1,
+          }}
+        >
+          <TrashIcon />
+          {deleting ? 'Удаление...' : 'Удалить'}
+        </button>
+      </div>
     </div>
   )
 }
@@ -1707,6 +1812,7 @@ export default function CalendarPage() {
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null)
   const [createModal, setCreateModal] = useState<CreateModal | null>(null)
   const [detailPopup, setDetailPopup] = useState<DetailPopup | null>(null)
+  const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null)
 
   // Derived dates
   const weekDays = getWeekDays(anchor)
@@ -1823,11 +1929,28 @@ export default function CalendarPage() {
     setDetailPopup({ event, x, y })
   }, [])
 
-  // Create
-  const handleCreate = async (payload: Partial<CalendarEvent>) => {
-    const created = await calendarApi.create(payload)
-    setEvents(prev => [...prev, created])
+  // Create or update depending on editing mode
+  const handleSave = async (payload: Partial<CalendarEvent>) => {
+    if (editingEvent) {
+      const updated = await calendarApi.update(editingEvent.id, payload)
+      setEvents(prev => prev.map(e => (e.id === updated.id ? updated : e)))
+    } else {
+      const created = await calendarApi.create(payload)
+      setEvents(prev => [...prev, created])
+    }
   }
+
+  const handleStartEdit = useCallback((ev: CalendarEvent) => {
+    setDetailPopup(null)
+    setContextMenu(null)
+    setEditingEvent(ev)
+    // Seed the create modal with any date/time — the modal will override from editingEvent
+    setCreateModal({
+      date: ev.start_datetime.slice(0, 10),
+      time: '09:00',
+      type: ev.event_type,
+    })
+  }, [])
 
   // Delete
   const handleDelete = async (id: number) => {
@@ -2023,12 +2146,13 @@ export default function CalendarPage() {
         />
       )}
 
-      {/* Create modal */}
+      {/* Create / Edit modal */}
       {createModal && (
         <CreateEventModal
           initial={createModal}
-          onSave={handleCreate}
-          onClose={() => setCreateModal(null)}
+          editingEvent={editingEvent}
+          onSave={handleSave}
+          onClose={() => { setCreateModal(null); setEditingEvent(null) }}
         />
       )}
 
@@ -2039,6 +2163,7 @@ export default function CalendarPage() {
           x={detailPopup.x}
           y={detailPopup.y}
           onDelete={handleDelete}
+          onEdit={handleStartEdit}
           onClose={() => setDetailPopup(null)}
         />
       )}
