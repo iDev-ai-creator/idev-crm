@@ -1,5 +1,7 @@
 from django.urls import path
-from .views import DealListView, DealDetailView, DealReorderView, DealNoteListView, DealNoteDetailView
+from .views import (DealListView, DealDetailView, DealReorderView,
+                    DealNoteListView, DealNoteDetailView,
+                    DealDocumentListView, DealDocumentDetailView)
 
 urlpatterns = [
     path('', DealListView.as_view(), name='deal-list'),
@@ -7,4 +9,6 @@ urlpatterns = [
     path('<int:pk>/', DealDetailView.as_view(), name='deal-detail'),
     path('<int:deal_pk>/notes/', DealNoteListView.as_view(), name='deal-note-list'),
     path('<int:deal_pk>/notes/<int:pk>/', DealNoteDetailView.as_view(), name='deal-note-detail'),
+    path('<int:deal_pk>/documents/', DealDocumentListView.as_view(), name='deal-document-list'),
+    path('<int:deal_pk>/documents/<int:pk>/', DealDocumentDetailView.as_view(), name='deal-document-detail'),
 ]

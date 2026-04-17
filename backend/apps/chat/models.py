@@ -39,7 +39,11 @@ class ChatMessage(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, related_name='chat_messages'
     )
-    text = models.TextField()
+    text = models.TextField(blank=True)
+    attachment = models.FileField(upload_to='chat/', null=True, blank=True)
+    attachment_name = models.CharField(max_length=255, blank=True)
+    attachment_size = models.PositiveBigIntegerField(default=0)
+    attachment_mime = models.CharField(max_length=100, blank=True)
     reply_to = models.ForeignKey(
         'self', on_delete=models.SET_NULL, null=True, blank=True, related_name='replies'
     )
@@ -64,3 +68,26 @@ class ChatReaction(models.Model):
     class Meta:
         unique_together = ('message', 'user', 'emoji')
         verbose_name = 'Chat Reaction'
+
+
+class ChatMention(models.Model):
+    """Record of an `@someone` mention inside a chat message.
+
+    Separate table (rather than a JSON field) so an in-app inbox of "where I was
+    @-mentioned" is a cheap indexed query. Created by the message serializer
+    whenever it detects `@<email-local-part>` or `@<first_name>` tokens.
+    """
+    message = models.ForeignKey(ChatMessage, on_delete=models.CASCADE, related_name='mentions')
+    mentioned_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='chat_mentions',
+    )
+    read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('message', 'mentioned_user')
+        indexes = [models.Index(fields=['mentioned_user', 'read'])]
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'@{self.mentioned_user} in msg {self.message_id}'

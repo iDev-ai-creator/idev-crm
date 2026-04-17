@@ -56,3 +56,19 @@ class DealNote(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+
+
+class DealDocument(models.Model):
+    deal = models.ForeignKey(Deal, on_delete=models.CASCADE, related_name='documents')
+    name = models.CharField(max_length=255)
+    file = models.FileField(upload_to='deals/documents/')
+    size = models.PositiveBigIntegerField(default=0)
+    uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+                                     null=True, related_name='deal_documents')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.name} ({self.deal})'

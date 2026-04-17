@@ -13,3 +13,8 @@ gunicorn==23.0.0
 channels==4.1.0
 channels-redis==4.2.0
 daphne==4.1.2
+anthropic==0.40.0
+openai==1.58.1
+httpx==0.27.2
+google-generativeai==0.8.3
+requests==2.32.3

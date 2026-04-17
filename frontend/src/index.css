@@ -1,2 +1,76 @@
 @import "idev-ui/tokens/tokens.css";
 @import "tailwindcss";
+
+/* ── Token bridge: map idev-ui tokens → CRM component names ── */
+:root {
+  --bg-main:        var(--bg);
+  --bg-card:        var(--surface);
+  --bg-hover:       var(--surface-2);
+  --text-secondary: var(--text-muted);
+
+  --radius-xl:      8px;
+  --radius-lg:      var(--r-lg);
+  --radius-md:      var(--r-sm);
+}
+
+/* ── Tailwind v4 color aliases for idev-ui components ──
+   idev-ui uses Tailwind classes like bg-accent, text-text-muted
+   which in Tailwind v4 map to --color-* CSS vars ── */
+@theme {
+  --color-accent:        #fd7448;
+  --color-accent-hover:  #eb633d;
+  --color-accent-soft:   rgba(253, 116, 72, 0.12);
+  --color-success:       #4ade80;
+  --color-warning:       #facc15;
+  --color-danger:        #f87171;
+  --color-info:          #60a5fa;
+  --color-text:          var(--text);
+  --color-text-muted:    var(--text-muted);
+  --color-text-subtle:   var(--text-subtle);
+  --color-surface:       var(--surface);
+  --color-surface-2:     var(--surface-2);
+  --color-border:        var(--border);
+  --font-brand:          'Montserrat', system-ui, sans-serif;
+  --radius-sm:           var(--r-sm);
+  --radius-pill:         var(--r-pill);
+}
+
+/* ── Global resets ── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-family: var(--font-body);
+  color: var(--text);
+  background: var(--bg);
+}
+
+body {
+  margin: 0;
+}
+
+/* ── Scrollbar styling ── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+@keyframes msgHighlight {
+  0%   { background-color: rgba(253, 116, 72, 0.2); }
+  100% { background-color: transparent; }
+}
+.msg-highlight {
+  animation: msgHighlight 1.5s ease-out forwards;
+  border-radius: 12px;
+}

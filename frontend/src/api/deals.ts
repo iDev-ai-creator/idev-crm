@@ -44,6 +44,15 @@ export const DEAL_STATUS_LABELS: Record<Deal['status'], string> = {
   closed: 'Closed', lost: 'Lost',
 }
 
+export interface DealDocument {
+  id: number
+  name: string
+  size: number
+  url: string | null
+  uploaded_by_name: string | null
+  created_at: string
+}
+
 export const dealsApi = {
   list: async (params?: Record<string, string>): Promise<PaginatedResponse<Deal>> => {
     const { data } = await api.get('/deals/', { params })
@@ -80,6 +89,21 @@ export const dealsApi = {
     },
     delete: async (dealId: number, noteId: number): Promise<void> => {
       await api.delete(`/deals/${dealId}/notes/${noteId}/`)
+    },
+  },
+  documents: {
+    list: async (dealId: number): Promise<DealDocument[]> => {
+      const { data } = await api.get(`/deals/${dealId}/documents/`)
+      return Array.isArray(data) ? data : data.results ?? []
+    },
+    upload: async (dealId: number, file: File): Promise<DealDocument> => {
+      const fd = new FormData()
+      fd.append('file', file)
+      const { data } = await api.post(`/deals/${dealId}/documents/`, fd)
+      return data
+    },
+    delete: async (dealId: number, docId: number): Promise<void> => {
+      await api.delete(`/deals/${dealId}/documents/${docId}/`)
     },
   },
 }

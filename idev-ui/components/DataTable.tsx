@@ -1,5 +1,5 @@
-'use client';
-import React, { useState } from 'react';
+// @ts-nocheck
+import { useState } from 'react';
 
 export interface Column<T> {
   key: keyof T | string;

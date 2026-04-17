@@ -5,7 +5,7 @@ import type { Deal } from '../../api/deals'
 
 export default function KanbanCard({ deal }: { deal: Deal }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: deal.id })
-  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
+  const style = { transform: CSS.Transform.toString(transform), transition }
 
   return (
     <div
@@ -13,7 +13,11 @@ export default function KanbanCard({ deal }: { deal: Deal }) {
       style={style}
       {...attributes}
       {...listeners}
-      className="bg-[var(--bg-main)] rounded-[var(--radius-md)] p-3 border border-[var(--border)] cursor-grab active:cursor-grabbing hover:border-[var(--accent)]/50 transition-colors shadow-sm"
+      className={`bg-[var(--bg-main)] rounded-[var(--radius-md)] p-3 border cursor-grab active:cursor-grabbing transition-all shadow-sm
+        ${isDragging
+          ? 'opacity-30 border-[var(--accent)] scale-95'
+          : 'border-[var(--border)] hover:border-[var(--accent)]/50 hover:shadow-md'
+        }`}
     >
       <Link to={`/deals/${deal.id}`} onClick={(e) => e.stopPropagation()}
         className="font-medium text-sm text-[var(--text)] hover:text-[var(--accent)] block mb-1 line-clamp-2">

@@ -1,0 +1,27 @@
+from rest_framework import generics
+from rest_framework.permissions import IsAuthenticated
+from .models import WebhookEndpoint, WebhookDelivery
+from .serializers import WebhookEndpointSerializer, WebhookDeliverySerializer
+
+
+class EndpointListView(generics.ListCreateAPIView):
+    queryset = WebhookEndpoint.objects.all()
+    serializer_class = WebhookEndpointSerializer
+    permission_classes = [IsAuthenticated]
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+
+class EndpointDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = WebhookEndpoint.objects.all()
+    serializer_class = WebhookEndpointSerializer
+    permission_classes = [IsAuthenticated]
+
+
+class DeliveryListView(generics.ListAPIView):
+    serializer_class = WebhookDeliverySerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return WebhookDelivery.objects.select_related('endpoint').order_by('-created_at')[:200]

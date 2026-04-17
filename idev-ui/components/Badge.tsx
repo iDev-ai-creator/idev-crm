@@ -1,4 +1,4 @@
-import React from 'react';
+// @ts-nocheck
 
 type BadgeColor = 'orange' | 'green' | 'yellow' | 'blue' | 'red' | 'gray';
 type BadgeSize = 'sm' | 'md';

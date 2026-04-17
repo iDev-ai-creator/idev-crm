@@ -1,0 +1,563 @@
+# howTestMe.yaml — iDev CRM test description for TITAN
+
+service:
+  name: idev-crm
+  repo: github.com/iDev-ai-creator/idev-crm
+  local_path: /Users/kuznetsov/Projects/iDev/idev-crm
+  type: web
+  description: >
+    Internal CRM for iDev outstaff company. Covers clients, deals, contacts,
+    tasks, chat, calendar, documents, AI features, RU company sync (EGRUL/HH),
+    risk scoring, CSV import, webhooks.
+
+environment:
+  base_url: http://localhost:3300
+  setup: docker compose up -d
+  auth:
+    method: login_password
+    credentials:
+      - role: admin
+        username: admin@idev.team
+        password: admin123
+    notes: >
+      BYPASS_AUTH=true in local dev auto-authenticates as admin. Login page
+      still works as a fallback.
+  dependencies:
+    - "docker: idev-crm-backend-1 (Django + Daphne ASGI on :8000)"
+    - "docker: idev-crm-nginx-1 (reverse proxy, static frontend on :3300)"
+    - "docker: idev-crm-db-1 (Postgres 16)"
+    - "docker: idev-crm-redis-1 (Redis 7)"
+    - "optional env: DEEPSEEK_API_KEY / ANTHROPIC_API_KEY for AI tests"
+    - "optional env: DADATA_API_KEY for RU financials"
+
+# ════════════════════════════════════════════════════════════════════════════
+# Test cases
+# ════════════════════════════════════════════════════════════════════════════
+test_cases:
+  ui:
+    # ── Dashboard ─────────────────────────────────────────────────────────
+    - id: TC-UI-01
+      name: Dashboard loads with KPI cards and sales funnel chart
+      tab: /dashboard
+      priority: P0
+      actions:
+        - "Open /dashboard"
+        - "Verify sidebar is visible with at least 6 nav links"
+        - "Verify KPI cards are present (ACTIVE CLIENTS, PIPELINE VALUE, TOTAL DEALS)"
+        - "Verify a recharts SVG wrapper is rendered"
+        - "Verify 'SALES FUNNEL' or 'Sales Funnel' section is visible"
+      expected: "All KPI cards visible, sales funnel chart renders, no JS errors"
+
+    # ── Clients list ──────────────────────────────────────────────────────
+    - id: TC-UI-02
+      name: Clients list shows seed companies and filters
+      tab: /clients
+      priority: P0
+      actions:
+        - "Open /clients"
+        - "Verify clients table is present"
+        - "Verify at least 3 seed companies appear (TechFlow, ShopLytics, MediCore, GameForge, LogiChain)"
+        - "Verify status badges are visible (Active/Lead/Prospect)"
+        - "Verify search input with placeholder containing 'Поиск' or 'Search' exists"
+        - "Verify 'Добавить' or 'Add client' button is present"
+      expected: "Table visible with seed data, search and add controls present"
+
+    - id: TC-UI-03
+      name: Clients search filters results
+      tab: /clients
+      priority: P1
+      actions:
+        - "Open /clients"
+        - "Fill search input with 'TechFlow'"
+        - "Press Enter"
+        - "Wait 1s for filter to apply"
+      expected: "TechFlow row visible, unrelated companies filtered out"
+
+    - id: TC-UI-04
+      name: Risk badges render on clients list
+      tab: /clients
+      priority: P1
+      actions:
+        - "Open /clients"
+        - "Inspect table body for risk-level labels"
+      expected: "At least one of low/medium/high/critical risk level appears"
+
+    - id: TC-UI-05
+      name: Bulk selection checkboxes present on clients list
+      tab: /clients
+      priority: P2
+      actions:
+        - "Open /clients"
+        - "Count checkbox inputs on the page"
+      expected: "At least one checkbox input (select-all or per-row) is present"
+
+    - id: TC-UI-06
+      name: CSV import button visible on clients
+      tab: /clients
+      priority: P2
+      actions:
+        - "Open /clients"
+        - "Look for a button whose text contains 'CSV', 'Импорт', or 'Import'"
+      expected: "CSV import button exists"
+
+    # ── Client detail ─────────────────────────────────────────────────────
+    - id: TC-UI-07
+      name: Client detail page renders tabs and side panel
+      tab: /clients/{id}
+      priority: P0
+      actions:
+        - "Open /clients, click the first client link"
+        - "Verify overview, contacts, deals, tasks, documents, notes tabs"
+        - "Verify the left side panel with inline-editable name/status"
+      expected: "All tabs visible, left panel editable fields present"
+
+    - id: TC-UI-08
+      name: Sync panel renders 'Синк' button and status badge
+      tab: /clients/{id}
+      priority: P0
+      actions:
+        - "Open client detail page"
+        - "Scroll to overview tab"
+        - "Verify 'Автоматический сбор данных' / auto-sync card is present"
+        - "Verify 'Синк' / 'Sync' button is present"
+      expected: "Sync panel card with button visible"
+
+    - id: TC-UI-09
+      name: Client Notes tab opens and shows empty state or notes
+      tab: /clients/{id}
+      priority: P1
+      actions:
+        - "Open client detail"
+        - "Click 'Заметки' / 'Notes' tab"
+      expected: "Tab switches, note list or empty-state placeholder appears"
+
+    - id: TC-UI-10
+      name: Contacts tab shows role labels
+      tab: /clients/{id}
+      priority: P1
+      actions:
+        - "Open client detail"
+        - "Click 'Контакты' / 'Contacts' tab"
+        - "Verify at least one of ЛПР / Менеджер / Secretary / Decision-maker labels"
+      expected: "Role labels visible for at least one contact"
+
+    - id: TC-UI-11
+      name: Client inline-edit field is present
+      tab: /clients/{id}
+      priority: P2
+      actions:
+        - "Open client detail"
+        - "Look for contenteditable=true nodes or edit buttons in side panel"
+      expected: "At least one inline-editable field is exposed"
+
+    # ── Create client modal ───────────────────────────────────────────────
+    - id: TC-UI-12
+      name: Create Client modal opens from 'Добавить' button
+      tab: /clients
+      priority: P0
+      actions:
+        - "Open /clients"
+        - "Click 'Добавить' / 'Add client' button"
+        - "Verify name input is focused"
+        - "Verify ИНН/tax_id input is visible"
+      expected: "Modal opens with at least name input visible"
+
+    - id: TC-UI-13
+      name: ИНН live validation and duplicate hint
+      tab: /clients (modal)
+      priority: P1
+      preconditions: "Open Create Client modal"
+      actions:
+        - "Fill ИНН input with '7736050003' (Gazprom)"
+        - "Wait ~600ms for debounce"
+        - "Observe live validation hint (✓ valid / ⚠ duplicate / ✗ invalid)"
+      expected: "One of the three hints is visible within 2 seconds"
+
+    # ── LeadEnrich modal / AI profile ─────────────────────────────────────
+    - id: TC-UI-14
+      name: LeadEnrich modal is wide enough on desktop
+      tab: /clients
+      priority: P1
+      preconditions: "Desktop viewport 1440x900"
+      actions:
+        - "Open /clients"
+        - "Click 'AI', 'Обогатить', or 'Enrich' trigger"
+        - "Measure bounding box of the modal dialog"
+      expected: "Modal width >= 900px (target 1000-1200)"
+
+    - id: TC-UI-15
+      name: HH.ru autocomplete returns suggestions
+      tab: /clients (modal)
+      priority: P1
+      preconditions: "LeadEnrich modal is open"
+      actions:
+        - "Focus the HH search input ('Тинькофф, Сбер, Яндекс...')"
+        - "Type 'тинь' and wait 2 seconds"
+      expected: "At least one suggestion button appears in the dropdown"
+
+    - id: TC-UI-16
+      name: LeadEnrich by domain returns profile and contacts
+      tab: /clients (modal)
+      priority: P1
+      preconditions: "LeadEnrich modal is open"
+      actions:
+        - "Fill domain input with 'idev.team'"
+        - "Click 'Найти'"
+        - "Wait up to 30s for response"
+      expected: "Enriched profile block appears; optional contacts list may appear"
+
+    # ── Deals ─────────────────────────────────────────────────────────────
+    - id: TC-UI-17
+      name: Deals kanban renders columns
+      tab: /deals
+      priority: P0
+      actions:
+        - "Open /deals"
+        - "Verify kanban columns: Lead, Qualified, Proposal, Negotiation, Won, Lost"
+      expected: "Kanban board with columns visible, cards may be empty"
+
+    - id: TC-UI-18
+      name: Create Deal modal opens
+      tab: /deals
+      priority: P0
+      actions:
+        - "Open /deals"
+        - "Click 'Новая сделка' / 'New deal' button"
+      expected: "Modal opens, client selector is visible"
+
+    - id: TC-UI-19
+      name: Deal detail allows adding a note
+      tab: /deals/{id}
+      priority: P0
+      actions:
+        - "Open /deals, click first deal card"
+        - "Fill first textarea with 'Titan test note'"
+        - "Click 'Add Note'"
+      expected: "Note text is saved and appears in the note list"
+
+    - id: TC-UI-20
+      name: Deal renewals filter view
+      tab: /deals
+      priority: P2
+      actions:
+        - "Open /deals"
+        - "Click 'Продления' tab/button if present"
+      expected: "Active/Signed deals with close date within 60 days are shown"
+
+    - id: TC-UI-21
+      name: AI buttons visible on deal detail
+      tab: /deals/{id}
+      priority: P1
+      actions:
+        - "Open first deal detail"
+        - "Look for AI/Саммари/Summary/Next-step buttons"
+      expected: "At least one AI-related button is present"
+
+    # ── Tasks ─────────────────────────────────────────────────────────────
+    - id: TC-UI-22
+      name: Tasks page renders filters
+      tab: /tasks
+      priority: P1
+      actions:
+        - "Open /tasks"
+        - "Verify status filter chips and card list"
+      expected: "Task list renders, filters visible"
+
+    - id: TC-UI-23
+      name: Task status circle advances todo→in_progress
+      tab: /tasks
+      priority: P1
+      actions:
+        - "Open /tasks"
+        - "Click the first status circle button inside a task row"
+      expected: "'In Progress' label appears somewhere in the task list"
+
+    # ── Chat ──────────────────────────────────────────────────────────────
+    - id: TC-UI-24
+      name: Chat composer has emoji button
+      tab: /chat
+      priority: P2
+      actions:
+        - "Open /chat, pick any channel"
+        - "Look for aria-label containing 'moji' or a button with 😀/😊"
+      expected: "Emoji trigger present near composer"
+
+    - id: TC-UI-25
+      name: Chat composer has attachment input/button
+      tab: /chat
+      priority: P2
+      actions:
+        - "Open /chat, pick any channel"
+        - "Look for input[type=file] or paperclip button"
+      expected: "File attachment control exists"
+
+    # ── Calendar ──────────────────────────────────────────────────────────
+    - id: TC-UI-26
+      name: Calendar week view renders hour labels and events
+      tab: /calendar
+      priority: P0
+      actions:
+        - "Open /calendar"
+        - "Count hour labels matching HH:00 (expect >= 5)"
+        - "Count event cards with data-testid^='event-'"
+      expected: "At least 5 hour labels and >= 1 event card render"
+
+    - id: TC-UI-27
+      name: Calendar event drag shifts vertical position
+      tab: /calendar
+      priority: P1
+      preconditions: "At least one event card exists"
+      actions:
+        - "Capture bounding box of the first event card"
+        - "Mouse-drag the body (not bottom handle) by +64px vertically"
+        - "Wait 800ms"
+        - "Compare bounding box Y delta"
+      expected: "Event moves >= 30px; PATCH /api/calendar/events/<id>/ fires"
+
+    - id: TC-UI-28
+      name: Calendar event resize grows height
+      tab: /calendar
+      priority: P1
+      preconditions: "At least one event card with resize handle exists"
+      actions:
+        - "Grab element with data-testid^='resize-', drag down by 32px"
+      expected: "Event bounding box height increases"
+
+    - id: TC-UI-29
+      name: Now-indicator line is rendered within working hours
+      tab: /calendar
+      priority: P2
+      actions:
+        - "Open /calendar between 08:00 and 21:00 local time"
+        - "Check for [data-testid='now-line']"
+      expected: "Red now-line element exists"
+
+    # ── Reports ───────────────────────────────────────────────────────────
+    - id: TC-UI-30
+      name: Reports page renders funnel chart with bars and stage labels
+      tab: /reports
+      priority: P0
+      actions:
+        - "Open /reports"
+        - "Count .recharts-bar-rectangle / rect[height] elements"
+        - "Verify funnel stage labels (New Lead, Discovery, Proposal, Negotiation)"
+      expected: "At least one bar element and all stage labels visible"
+
+    # ── Backlog ───────────────────────────────────────────────────────────
+    - id: TC-UI-31
+      name: Backlog voting increments count
+      tab: /backlog
+      priority: P2
+      actions:
+        - "Open /backlog"
+        - "Read the number inside the first 👍 vote button"
+        - "Click the vote button"
+      expected: "Vote count increases by 1"
+
+    # ── Settings / Webhooks ───────────────────────────────────────────────
+    - id: TC-UI-32
+      name: Settings mentions webhooks / integrations
+      tab: /settings
+      priority: P2
+      actions:
+        - "Open /settings"
+        - "Search page text for webhook|вебхук|integration|интеграц"
+      expected: "At least one of those terms is present"
+
+    - id: TC-UI-33
+      name: Language toggle switches RU↔EN
+      tab: any
+      priority: P1
+      actions:
+        - "Open /dashboard"
+        - "Click EN/RU toggle button in header"
+        - "Verify page strings switch between 'Дашборд/Клиенты' and 'Dashboard/Clients'"
+        - "Click again to toggle back"
+      expected: "Language round-trips correctly"
+
+    - id: TC-UI-34
+      name: Theme toggle flips dark/light
+      tab: any
+      priority: P2
+      actions:
+        - "Open /dashboard"
+        - "Capture documentElement.className + data-theme attribute"
+        - "Click theme toggle button (🌙/☀)"
+        - "Capture state again"
+      expected: "html class or data-theme attribute value changes"
+
+    # ── Command palette / search ──────────────────────────────────────────
+    - id: TC-UI-35
+      name: Cmd+K opens global quick search
+      tab: any
+      priority: P1
+      actions:
+        - "Open /dashboard"
+        - "Press Meta+K (fallback Control+K)"
+      expected: "A modal or input with search placeholder appears"
+
+    - id: TC-UI-36
+      name: Extended /search page renders multiple blocks
+      tab: /search
+      priority: P2
+      actions:
+        - "Open /search"
+      expected: "Blocks visible: Клиент, Сделки, Задачи, Ставки, Заметки / База знаний"
+
+    # ── Sidebar navigation ────────────────────────────────────────────────
+    - id: TC-UI-37
+      name: Sidebar navigates to all primary pages
+      tab: any
+      priority: P0
+      actions:
+        - "Open /dashboard"
+        - "Click each sidebar link in order: dashboard, clients, deals, tasks, chat, reports, backlog, settings"
+      expected: "URL path contains the matching slug after each click"
+
+    # ── Bench ─────────────────────────────────────────────────────────────
+    - id: TC-UI-38
+      name: Bench page renders resource roster
+      tab: /bench
+      priority: P2
+      actions:
+        - "Open /bench"
+        - "Verify page contains 'Bench' / 'Бенч' / 'Roster' heading"
+        - "Verify at least one table row or list item"
+      expected: "Bench page is reachable and non-empty"
+
+    # ── Mobile viewports ──────────────────────────────────────────────────
+    - id: TC-UI-39
+      name: Mobile — hamburger opens drawer
+      tab: any (mobile 390x844)
+      priority: P0
+      actions:
+        - "Set viewport 390x844"
+        - "Open /dashboard"
+        - "Click button[aria-label='Toggle menu']"
+      expected: "Drawer with nav links appears"
+
+    - id: TC-UI-40
+      name: Mobile — drawer closes after picking nav item
+      tab: any (mobile)
+      priority: P1
+      actions:
+        - "Open mobile drawer"
+        - "Click 'Клиенты' link"
+      expected: "URL is /clients and drawer is hidden"
+
+    - id: TC-UI-41
+      name: Mobile — create client action opens a modal / sheet
+      tab: /clients (mobile)
+      priority: P1
+      actions:
+        - "Set viewport 390x844"
+        - "Open /clients"
+        - "Click 'Добавить' / + button"
+      expected: "[role=dialog] or fixed overlay becomes visible"
+
+    - id: TC-UI-42
+      name: Tablet — layout renders sidebar and main pane
+      tab: any (tablet 768x1024)
+      priority: P2
+      actions:
+        - "Set viewport 768x1024"
+        - "Open /dashboard"
+      expected: "Sidebar collapsed or visible, main content has > 0 height"
+
+  api:
+    - id: TC-API-01
+      name: POST /api/clients/check-tax-id/ validates ИНН
+      method: POST
+      endpoint: /api/clients/check-tax-id/
+      priority: P0
+      actions:
+        - "POST JSON body: {\"tax_id\": \"7707083893\", \"country\": \"RU\"}"
+      expected: "HTTP 200; response.normalized == '7707083893'; response.valid == true"
+
+    - id: TC-API-02
+      name: POST /api/clients/{id}/sync/ queues background sync
+      method: POST
+      endpoint: /api/clients/{id}/sync/
+      priority: P0
+      preconditions: "At least one client exists"
+      actions:
+        - "GET /api/clients/?page_size=1 → take first id"
+        - "POST /api/clients/<id>/sync/"
+      expected: "HTTP 200; response.queued == true; response.client_id == <id>"
+
+    - id: TC-API-03
+      name: GET /api/ai/provider-info/ returns configured provider
+      method: GET
+      endpoint: /api/ai/provider-info/
+      priority: P1
+      actions:
+        - "GET /api/ai/provider-info/"
+      expected: "HTTP 200; response.provider is one of anthropic/deepseek/openai/gemini/stub"
+
+    - id: TC-API-04
+      name: POST /api/clients/{id}/risk/recalc/ returns score + level
+      method: POST
+      endpoint: /api/clients/{id}/risk/recalc/
+      priority: P1
+      preconditions: "At least one client exists"
+      actions:
+        - "POST /api/clients/<id>/risk/recalc/"
+      expected: "HTTP 200; response has 'score' (int) and 'level' (low/medium/high/critical)"
+
+    - id: TC-API-05
+      name: GET /api/clients/ pagination returns results list
+      method: GET
+      endpoint: /api/clients/
+      priority: P0
+      actions:
+        - "GET /api/clients/?page_size=5"
+      expected: "HTTP 200; response.results is a list; response.count is a number"
+
+  validation:
+    - id: TC-VAL-01
+      name: Create client rejects missing name
+      tab: /clients (modal)
+      priority: P0
+      actions:
+        - "POST /api/clients/ with empty body"
+      expected: "HTTP 400; response body has 'name' error"
+
+    - id: TC-VAL-02
+      name: Create client succeeds with only name (all other fields optional)
+      tab: /clients (modal)
+      priority: P0
+      actions:
+        - "POST /api/clients/ with {\"name\": \"Titan test client\"}"
+      expected: "HTTP 201; response has id; risk calculation fires asynchronously"
+
+    - id: TC-VAL-03
+      name: Invalid ИНН length rejected by check-tax-id
+      tab: /clients (modal)
+      priority: P1
+      actions:
+        - "POST /api/clients/check-tax-id/ with tax_id='123'"
+      expected: "HTTP 200; response.valid == false; response.reason mentions length"
+
+# ════════════════════════════════════════════════════════════════════════════
+# UI specifics — known patterns in the codebase
+# ════════════════════════════════════════════════════════════════════════════
+ui_specifics:
+  framework: "React 19 + Vite 8 + Tailwind 4 + Zustand"
+  selector_patterns:
+    modal: ".fixed.inset-0 .rounded-2xl, [role='dialog']"
+    nav_links: "aside a, aside nav a"
+    hamburger: "button[aria-label='Toggle menu']"
+    sync_button: "button:has-text('Синк'), button:has-text('Sync')"
+    event_card: "[data-testid^='event-']"
+    event_resize_handle: "[data-testid^='resize-']"
+    now_indicator: "[data-testid='now-line']"
+    risk_badge: "[data-testid='risk-badge']"
+  gotchas:
+    - "BYPASS_AUTH=true is the default in local dev — /login is bypassed."
+    - "Admin credentials still exist (admin@idev.team / admin123) for role=admin login tests."
+    - "Frontend is built into nginx image; rebuild with `docker compose build nginx` after FE edits."
+    - "Uploads (media) are served via nginx-proxied /media/… — ClientDocumentSerializer returns relative URLs."
+    - "Calendar hour grid is HOUR_HEIGHT=64 px per hour, 08:00–21:00 visible."
+    - "Drag and resize on calendar use pointer events bound in bindEventPointerDrag/Resize — Playwright's mouse.move+mouse.up works but must hit the card body, not the resize strip."
+    - "LeadEnrich modal max-w-[min(1200px,95vw)] — width assertion must use bounding box, not CSS class."
+    - "Sync runs in a daemon thread; poll `/api/clients/<id>/` every 2s for status change."

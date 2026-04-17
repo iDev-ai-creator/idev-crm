@@ -9,9 +9,15 @@ class BacklogItem(models.Model):
         TESTING = 'testing', 'Testing'
         DONE = 'done', 'Done'
 
+    class Priority(models.TextChoices):
+        LOW = 'low', 'Low'
+        MEDIUM = 'medium', 'Medium'
+        HIGH = 'high', 'High'
+
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     status = models.CharField(max_length=15, choices=Status.choices, default=Status.IDEA)
+    priority = models.CharField(max_length=10, choices=Priority.choices, default=Priority.MEDIUM)
     author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='backlog_items')
     votes = models.PositiveIntegerField(default=0)
     order = models.PositiveIntegerField(default=0, db_index=True)

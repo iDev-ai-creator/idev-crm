@@ -24,7 +24,7 @@ class BacklogItemSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = BacklogItem
-        fields = ['id', 'title', 'description', 'status', 'author', 'votes', 'order', 'comments_count', 'created_at', 'updated_at']
+        fields = ['id', 'title', 'description', 'status', 'priority', 'author', 'votes', 'order', 'comments_count', 'created_at', 'updated_at']
         read_only_fields = ['id', 'author', 'created_at', 'updated_at']
 
     def get_comments_count(self, obj):

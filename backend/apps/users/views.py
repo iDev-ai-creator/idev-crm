@@ -53,8 +53,15 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class RoleListView(generics.ListAPIView):
+class RoleListView(generics.ListCreateAPIView):
     queryset = Role.objects.all()
     serializer_class = RoleSerializer
     permission_classes = [IsAuthenticated]
     pagination_class = None  # return all roles without pagination
+
+
+class RoleDetailView(generics.RetrieveUpdateAPIView):
+    queryset = Role.objects.all()
+    serializer_class = RoleSerializer
+    permission_classes = [IsAuthenticated, IsAdmin]
+    http_method_names = ['get', 'patch']

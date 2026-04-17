@@ -69,3 +69,32 @@ class DealNoteDetailView(generics.RetrieveUpdateDestroyAPIView):
         if note.author != request.user:
             return Response({'error': "Cannot edit another user's note"}, status=403)
         return super().update(request, *args, **kwargs)
+
+
+from .models import DealDocument
+from .serializers import DealDocumentSerializer
+
+class DealDocumentListView(generics.ListCreateAPIView):
+    serializer_class = DealDocumentSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return DealDocument.objects.filter(deal_id=self.kwargs['deal_pk'])
+
+    def perform_create(self, serializer):
+        deal = generics.get_object_or_404(Deal, pk=self.kwargs['deal_pk'])
+        file = self.request.FILES.get('file')
+        serializer.save(
+            deal=deal,
+            uploaded_by=self.request.user,
+            name=file.name if file else serializer.validated_data.get('name', ''),
+            size=file.size if file else 0,
+        )
+
+
+class DealDocumentDetailView(generics.DestroyAPIView):
+    serializer_class = DealDocumentSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return DealDocument.objects.filter(deal_id=self.kwargs['deal_pk'])

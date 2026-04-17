@@ -32,6 +32,12 @@ INSTALLED_APPS = [
     'apps.dashboard',
     'apps.chat',
     'apps.backlog',
+    'apps.kpi',
+    'apps.events',
+    'apps.calendar',
+    'apps.favorites',
+    'apps.ai',
+    'apps.webhooks',
 ]
 
 MIDDLEWARE = [

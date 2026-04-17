@@ -31,9 +31,24 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   fetchMe: async () => {
+    if (BYPASS_AUTH) {
+      try {
+        // Try existing token first
+        let user = await authApi.me().catch(() => null)
+        if (!user) {
+          // Auto-login as admin so all API calls have a valid token
+          await authApi.login({ email: 'admin@idev.team', password: 'admin123' })
+          user = await authApi.me()
+        }
+        set({ user, isLoading: false, isAuthenticated: true })
+      } catch {
+        // Fallback: mark authenticated so app doesn't redirect to login
+        set({ isLoading: false, isAuthenticated: true })
+      }
+      return
+    }
     const token = localStorage.getItem('access_token')
-    // In bypass mode, always call API (backend auto-auths as admin)
-    if (!BYPASS_AUTH && !token) {
+    if (!token) {
       set({ isLoading: false, isAuthenticated: false })
       return
     }
@@ -41,12 +56,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       const user = await authApi.me()
       set({ user, isAuthenticated: true, isLoading: false })
     } catch {
-      if (BYPASS_AUTH) {
-        // In bypass mode, show layout even if fetchMe fails
-        set({ isLoading: false, isAuthenticated: true })
-      } else {
-        set({ isLoading: false, isAuthenticated: false })
-      }
+      set({ isLoading: false, isAuthenticated: false })
     }
   },
 }))

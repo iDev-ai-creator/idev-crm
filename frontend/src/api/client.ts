@@ -1,8 +1,8 @@
 import axios from 'axios'
+import { BYPASS_AUTH } from '../stores/authStore'
 
 const api = axios.create({
   baseURL: '/api',
-  headers: { 'Content-Type': 'application/json' },
 })
 
 api.interceptors.request.use((config) => {
@@ -51,7 +51,9 @@ api.interceptors.response.use(
       processQueue(err, null)
       localStorage.removeItem('access_token')
       localStorage.removeItem('refresh_token')
-      window.location.href = '/login'
+      if (!BYPASS_AUTH) {
+        window.location.href = '/login'
+      }
       return Promise.reject(err)
     } finally {
       isRefreshing = false

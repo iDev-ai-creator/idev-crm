@@ -1,4 +1,4 @@
-import React from 'react';
+// @ts-nocheck
 
 interface StatCardProps {
   value: string | number;

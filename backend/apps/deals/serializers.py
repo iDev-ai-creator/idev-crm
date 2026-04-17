@@ -58,3 +58,25 @@ class DealSerializer(serializers.ModelSerializer):
 class ReorderItemSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     order = serializers.IntegerField(min_value=0)
+
+
+from .models import DealDocument
+
+class DealDocumentSerializer(serializers.ModelSerializer):
+    uploaded_by_name = serializers.SerializerMethodField()
+    url = serializers.SerializerMethodField()
+    file = serializers.FileField(write_only=True, required=True)
+
+    class Meta:
+        model = DealDocument
+        fields = ['id', 'name', 'size', 'file', 'url', 'uploaded_by_name', 'created_at']
+        read_only_fields = ['id', 'name', 'size', 'url', 'uploaded_by_name', 'created_at']
+
+    def get_uploaded_by_name(self, obj):
+        return obj.uploaded_by.full_name or obj.uploaded_by.email if obj.uploaded_by else None
+
+    def get_url(self, obj):
+        request = self.context.get('request')
+        if obj.file and request:
+            return request.build_absolute_uri(obj.file.url)
+        return None

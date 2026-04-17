@@ -34,7 +34,8 @@ export function useChatSocket({ channelId, onMessage, onReaction }: UseChatSocke
     if (!channelId) return
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
     const host = window.location.host
-    const url = `${protocol}://${host}/ws/chat/${channelId}/`
+    const token = localStorage.getItem('access_token') ?? ''
+    const url = `${protocol}://${host}/ws/chat/${channelId}/?token=${token}`
 
     const ws = new WebSocket(url)
     wsRef.current = ws

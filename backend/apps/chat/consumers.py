@@ -71,8 +71,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def save_message(self, text, reply_to_id=None):
-        from apps.chat.models import ChatMessage, ChatChannel
-        channel = ChatChannel.objects.get(pk=self.channel_id)
+        from apps.chat.models import ChatMessage, ChatChannel, ChatMention
+        from apps.chat.serializers import ChatMessageSerializer, extract_mentions
+        channel = ChatChannel.objects.prefetch_related('members').get(pk=self.channel_id)
         reply_to = None
         if reply_to_id:
             try:
@@ -82,14 +83,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
         msg = ChatMessage.objects.create(
             channel=channel, author=self.user, text=text, reply_to=reply_to
         )
-        return {
-            'id': msg.id,
-            'text': msg.text,
-            'author': {'id': self.user.id, 'full_name': self.user.full_name, 'email': self.user.email},
-            'reply_to': reply_to_id,
-            'created_at': msg.created_at.isoformat(),
-            'channel': self.channel_id,
-        }
+        for u in extract_mentions(text, channel_members=channel.members.all()):
+            ChatMention.objects.get_or_create(message=msg, mentioned_user=u)
+        return ChatMessageSerializer(msg).data
 
     @database_sync_to_async
     def toggle_reaction(self, message_id, emoji):

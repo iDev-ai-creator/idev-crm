@@ -14,6 +14,12 @@ urlpatterns = [
     path('api/dashboard/', include('apps.dashboard.urls')),
     path('api/chat/', include('apps.chat.urls')),
     path('api/backlog/', include('apps.backlog.urls')),
+    path('api/kpi/', include('apps.kpi.urls')),
+    path('api/events/', include('apps.events.urls')),
+    path('api/calendar/', include('apps.calendar.urls')),
+    path('api/favorites/', include('apps.favorites.urls')),
+    path('api/ai/', include('apps.ai.urls')),
+    path('api/webhooks/', include('apps.webhooks.urls')),
 ]
 
 if settings.DEBUG:
