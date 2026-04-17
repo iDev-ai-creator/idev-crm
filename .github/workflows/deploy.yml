@@ -32,7 +32,12 @@ jobs:
           script: |
             set -e
             cd /opt/idev-crm
+            # Protect locally-modified secrets (.env is in .gitignore but may
+            # still be dirty from pre-untrack state on legacy servers)
+            if [ -f .env ]; then cp .env /tmp/idev-crm.env.backup; fi
+            git checkout -- .env 2>/dev/null || true
             git pull origin main
+            if [ -f /tmp/idev-crm.env.backup ]; then cp /tmp/idev-crm.env.backup .env; fi
             docker compose build
             docker compose up -d
             docker compose exec -T backend python manage.py migrate --no-input
